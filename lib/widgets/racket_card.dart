@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/racket_model.dart';
 import '../theme/app_theme.dart';
+import 'racket_image_widget.dart';
 import 'tension_badge.dart';
 
 class RacketCard extends StatelessWidget {
@@ -30,7 +31,8 @@ class RacketCard extends StatelessWidget {
         brandColor = AppTheme.primary;
     }
 
-    final tensionProgress = (1.0 - (racket.tensionLossPercent / 100.0)).clamp(0.0, 1.0);
+    final tensionProgress =
+        (1.0 - (racket.tensionLossPercent / 100.0)).clamp(0.0, 1.0);
 
     return InkWell(
       onTap: onTap,
@@ -41,7 +43,9 @@ class RacketCard extends StatelessWidget {
           color: AppTheme.surface,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: racket.needsRestring ? AppTheme.danger.withOpacity(0.5) : AppTheme.border,
+            color: racket.needsRestring
+                ? AppTheme.danger.withOpacity(0.5)
+                : AppTheme.border,
             width: racket.needsRestring ? 1.5 : 1,
           ),
           boxShadow: [
@@ -62,7 +66,8 @@ class RacketCard extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
                       color: brandColor.withOpacity(0.15),
                       borderRadius: BorderRadius.circular(8),
@@ -89,56 +94,32 @@ class RacketCard extends StatelessWidget {
               const SizedBox(height: 10),
 
               // Racket Name & Edition
-              Row(
-                children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: AppTheme.surfaceLight,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(Icons.sports_tennis_rounded, color: AppTheme.primary, size: 26),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          racket.modelName,
-                          style: const TextStyle(
-                            color: AppTheme.textPrimary,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 17,
-                          ),
-                        ),
-                        Text(
-                          '${racket.editionGen} • ${racket.colorway}',
-                          style: const TextStyle(
-                            color: AppTheme.textSecondary,
-                            fontSize: 12,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+              Text(
+                racket.modelName,
+                style: const TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                '${racket.editionGen} • ${racket.colorway}',
+                style: const TextStyle(
+                  color: AppTheme.textSecondary,
+                  fontSize: 12,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
               const SizedBox(height: 12),
 
-              // Specs Row Chips
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: [
-                  _specChip(racket.weightU),
-                  _specChip(racket.gripG),
-                  _specChip('${racket.balancePointMm}mm (${racket.balancePointMm > 295 ? "Nặng đầu" : "Cân bằng"})'),
-                  _specChip('Max: ${racket.maxTensionLbs.toInt()} lbs'),
-                ],
+              // Ảnh cây vợt do người dùng tải lên (Thay thế cho dãy thông số 4U, G5, 305mm, 28lbs)
+              RacketImageWidget(
+                imageUrl: racket.imageUrl,
+                brand: racket.brand,
+                height: 155,
+                borderRadius: 12,
               ),
               const SizedBox(height: 14),
 
@@ -151,16 +132,23 @@ class RacketCard extends StatelessWidget {
                     children: [
                       Text(
                         'Cước: ${racket.currentStringModel} (${racket.initialTensionLbs} lbs)',
-                        style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                        style: const TextStyle(
+                          color: AppTheme.textSecondary,
+                          fontSize: 12,
+                        ),
                       ),
                       Text(
                         racket.daysSinceStrung > 0
                             ? '${racket.daysSinceStrung} ngày trước'
                             : 'Mới đan',
                         style: TextStyle(
-                          color: racket.needsRestring ? AppTheme.danger : AppTheme.textMuted,
+                          color: racket.needsRestring
+                              ? AppTheme.danger
+                              : AppTheme.textMuted,
                           fontSize: 11,
-                          fontWeight: racket.needsRestring ? FontWeight.bold : FontWeight.normal,
+                          fontWeight: racket.needsRestring
+                              ? FontWeight.bold
+                              : FontWeight.normal,
                         ),
                       ),
                     ],
@@ -174,7 +162,9 @@ class RacketCard extends StatelessWidget {
                       valueColor: AlwaysStoppedAnimation<Color>(
                         racket.needsRestring
                             ? AppTheme.danger
-                            : (racket.tensionLossPercent > 12.0 ? AppTheme.accent : AppTheme.primary),
+                            : (racket.tensionLossPercent > 12.0
+                                ? AppTheme.accent
+                                : AppTheme.primary),
                       ),
                       minHeight: 6,
                     ),
@@ -186,15 +176,20 @@ class RacketCard extends StatelessWidget {
               if (racket.needsRestring) ...[
                 const SizedBox(height: 10),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                   decoration: BoxDecoration(
                     color: AppTheme.danger.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: AppTheme.danger.withOpacity(0.3)),
                   ),
-                  child: Row(
-                    children: const [
-                      Icon(Icons.warning_amber_rounded, color: AppTheme.danger, size: 16),
+                  child: const Row(
+                    children: [
+                      Icon(
+                        Icons.warning_amber_rounded,
+                        color: AppTheme.danger,
+                        size: 16,
+                      ),
                       SizedBox(width: 8),
                       Expanded(
                         child: Text(
@@ -212,25 +207,6 @@ class RacketCard extends StatelessWidget {
               ],
             ],
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _specChip(String label) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: AppTheme.surfaceLight,
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: AppTheme.border.withOpacity(0.6)),
-      ),
-      child: Text(
-        label,
-        style: const TextStyle(
-          color: AppTheme.textSecondary,
-          fontSize: 11,
-          fontWeight: FontWeight.w500,
         ),
       ),
     );

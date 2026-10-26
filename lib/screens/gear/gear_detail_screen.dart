@@ -10,6 +10,8 @@ import '../../providers/notification_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/tension_badge.dart';
 import '../shop/shop_detail_screen.dart';
+import 'add_edit_racket_screen.dart';
+import '../../widgets/racket_image_widget.dart';
 
 class GearDetailScreen extends StatefulWidget {
   final String racketId;
@@ -236,10 +238,16 @@ class _GearDetailScreenState extends State<GearDetailScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.edit_outlined),
-            tooltip: 'Chỉnh sửa thông số',
+            tooltip: 'Chỉnh sửa thông số & tải ảnh vợt',
             onPressed: () {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Chức năng chỉnh sửa thông số vợt')),
+                const SnackBar(content: Text('Đang mở màn hình chỉnh sửa vợt & tải ảnh...'), duration: Duration(milliseconds: 600)),
+              );
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => AddEditRacketScreen(existingRacket: racket),
+                ),
               );
             },
           ),
@@ -313,6 +321,13 @@ class _GearDetailScreenState extends State<GearDetailScreen> {
                   ),
                   const SizedBox(height: 16),
 
+                  RacketImageWidget(
+                    imageUrl: racket.imageUrl,
+                    brand: racket.brand,
+                    height: 170,
+                    borderRadius: 14,
+                  ),
+                  const SizedBox(height: 14),
                   // Tension Stats Highlight
                   Container(
                     padding: const EdgeInsets.all(14),
