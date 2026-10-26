@@ -5,6 +5,7 @@ import '../../providers/shop_provider.dart';
 import '../../providers/notification_provider.dart';
 import '../../providers/cart_provider.dart';
 import '../../providers/chat_provider.dart';
+import '../../providers/auth_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/racket_card.dart';
 import '../../widgets/shop_card.dart';
@@ -13,6 +14,8 @@ import '../gear/add_edit_racket_screen.dart';
 import '../shop/shop_detail_screen.dart';
 import '../chat/chat_screen.dart';
 import '../cart/cart_screen.dart';
+import '../profile/profile_screen.dart';
+import '../sport/sport_selection_screen.dart';
 
 class HomeDashboardScreen extends StatelessWidget {
   final Function(int)? onNavigateTab;
@@ -25,6 +28,8 @@ class HomeDashboardScreen extends StatelessWidget {
     final shopProvider = context.watch<ShopProvider>();
     final notifProvider = context.watch<NotificationProvider>();
     final cartProvider = context.watch<CartProvider>();
+    final authProvider = context.watch<AuthProvider>();
+    final currentUser = authProvider.currentUser;
 
     final rackets = racketProvider.allRackets;
     final alertRackets = racketProvider.racketsNeedingRestring;
@@ -32,36 +37,54 @@ class HomeDashboardScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: Row(
-          children: [
-            Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(
-                gradient: AppTheme.primaryGradient,
-                borderRadius: BorderRadius.circular(10),
+        title: InkWell(
+          onTap: () {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => const SportSelectionScreen()),
+            );
+          },
+          borderRadius: BorderRadius.circular(10),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  gradient: AppTheme.primaryGradient,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Icons.sports_tennis_rounded,
+                  color: Colors.black,
+                  size: 24,
+                ),
               ),
-              child: const Icon(Icons.sports_tennis_rounded, color: Colors.black, size: 24),
-            ),
-            const SizedBox(width: 10),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
-                Text(
-                  'GEAR SPORTS',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1.0,
+              const SizedBox(width: 10),
+              const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'GEAR SPORTS',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.0,
+                    ),
                   ),
-                ),
-                Text(
-                  'Quản lý vợt & Đan cước',
-                  style: TextStyle(fontSize: 11, color: AppTheme.textSecondary),
-                ),
-              ],
-            ),
-          ],
+                  Text(
+                    '🏸 Cầu Lông • Đổi bộ môn ▾',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: AppTheme.primary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
         actions: [
           // Cart action button
@@ -88,7 +111,11 @@ class HomeDashboardScreen extends StatelessWidget {
                     ),
                     child: Text(
                       '${cartProvider.itemCount}',
-                      style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ),
@@ -115,11 +142,29 @@ class HomeDashboardScreen extends StatelessWidget {
                     ),
                     child: Text(
                       '${notifProvider.unreadCount}',
-                      style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ),
             ],
+          ),
+          // User Profile & Logout button
+          IconButton(
+            tooltip: 'Hồ sơ & Đăng xuất',
+            icon: const Icon(
+              Icons.account_circle_outlined,
+              color: AppTheme.primary,
+            ),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const ProfileScreen()),
+              );
+            },
           ),
         ],
       ),
@@ -128,43 +173,100 @@ class HomeDashboardScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Welcome & Player Status Card
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                gradient: AppTheme.cardGradient,
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: AppTheme.border),
-              ),
-              child: Row(
-                children: [
-                  const CircleAvatar(
-                    radius: 26,
-                    backgroundColor: AppTheme.surfaceLight,
-                    child: Icon(Icons.person, color: AppTheme.primary, size: 32),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: const [
-                        Text(
-                          'Chào bạn, Cường!',
-                          style: TextStyle(
-                            color: AppTheme.textPrimary,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 17,
-                          ),
+            // Welcome & Player Status Card (Click để mở Hồ sơ cá nhân & Đăng xuất)
+            InkWell(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const ProfileScreen()),
+                );
+              },
+              borderRadius: BorderRadius.circular(18),
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  gradient: AppTheme.cardGradient,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: AppTheme.border),
+                ),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 26,
+                      backgroundColor: AppTheme.surfaceLight,
+                      child: Text(
+                        (currentUser?.fullName.isNotEmpty == true)
+                            ? currentUser!.fullName.trim()[0].toUpperCase()
+                            : 'C',
+                        style: const TextStyle(
+                          color: AppTheme.primary,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w900,
                         ),
-                        SizedBox(height: 3),
-                        Text(
-                          'Lối chơi: Thiên công 4U • Sẵn sàng ra sân 🏸',
-                          style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
-                        ),
-                      ],
+                      ),
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  'Chào bạn, ${currentUser?.fullName ?? 'Cường'}!',
+                                  style: const TextStyle(
+                                    color: AppTheme.textPrimary,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.primary.withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
+                                    color: AppTheme.primary.withOpacity(0.5),
+                                  ),
+                                ),
+                                child: Text(
+                                  currentUser?.role.shortLabel ?? 'Người chơi',
+                                  style: const TextStyle(
+                                    color: AppTheme.primary,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            currentUser?.playStyle ??
+                                'Lối chơi: Thiên công 4U • Sẵn sàng ra sân 🏸',
+                            style: const TextStyle(
+                              color: AppTheme.textSecondary,
+                              fontSize: 12,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(
+                      Icons.chevron_right_rounded,
+                      color: AppTheme.textMuted,
+                    ),
+                  ],
+                ),
               ),
             ),
             const SizedBox(height: 16),
@@ -183,7 +285,11 @@ class HomeDashboardScreen extends StatelessWidget {
                   children: [
                     Row(
                       children: [
-                        const Icon(Icons.warning_amber_rounded, color: AppTheme.danger, size: 22),
+                        const Icon(
+                          Icons.warning_amber_rounded,
+                          color: AppTheme.danger,
+                          size: 22,
+                        ),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
@@ -200,7 +306,10 @@ class HomeDashboardScreen extends StatelessWidget {
                     const SizedBox(height: 8),
                     Text(
                       'Cây ${alertRackets.first.brand} ${alertRackets.first.modelName} cước đã chùng -${alertRackets.first.tensionLossPercent}%. Hãy đan lại để phòng tránh chấn thương cổ tay!',
-                      style: const TextStyle(color: AppTheme.textPrimary, fontSize: 12),
+                      style: const TextStyle(
+                        color: AppTheme.textPrimary,
+                        fontSize: 12,
+                      ),
                     ),
                     const SizedBox(height: 10),
                     Row(
@@ -210,25 +319,37 @@ class HomeDashboardScreen extends StatelessWidget {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (_) => GearDetailScreen(racketId: alertRackets.first.id),
+                                builder: (_) => GearDetailScreen(
+                                  racketId: alertRackets.first.id,
+                                ),
                               ),
                             );
                           },
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppTheme.danger,
                             foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                            textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 8,
+                            ),
+                            textStyle: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                           child: const Text('Xem Vợt Này'),
                         ),
                         const SizedBox(width: 10),
                         OutlinedButton(
-                          onPressed: () => onNavigateTab?.call(2), // Switch to Shop Map
+                          onPressed: () =>
+                              onNavigateTab?.call(2), // Switch to Shop Map
                           style: OutlinedButton.styleFrom(
                             foregroundColor: AppTheme.textPrimary,
                             side: const BorderSide(color: AppTheme.border),
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 8,
+                            ),
                             textStyle: const TextStyle(fontSize: 12),
                           ),
                           child: const Text('Tìm Tiệm Đan Gần Nhất'),
@@ -250,7 +371,7 @@ class HomeDashboardScreen extends StatelessWidget {
                   color: AppTheme.primary,
                   onTap: () => onNavigateTab?.call(2), // Shop Map
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 12),
                 _shortcutButton(
                   icon: Icons.add_rounded,
                   label: 'Thêm Vợt Mới',
@@ -258,16 +379,11 @@ class HomeDashboardScreen extends StatelessWidget {
                   onTap: () {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (_) => const AddEditRacketScreen()),
+                      MaterialPageRoute(
+                        builder: (_) => const AddEditRacketScreen(),
+                      ),
                     );
                   },
-                ),
-                const SizedBox(width: 10),
-                _shortcutButton(
-                  icon: Icons.chat_bubble_outline_rounded,
-                  label: 'Tư Vấn Thợ',
-                  color: AppTheme.accent,
-                  onTap: () => onNavigateTab?.call(3), // Chat List
                 ),
               ],
             ),
@@ -287,7 +403,10 @@ class HomeDashboardScreen extends StatelessWidget {
                 ),
                 TextButton(
                   onPressed: () => onNavigateTab?.call(1), // Gear List tab
-                  child: const Text('Xem tất cả ➔', style: TextStyle(color: AppTheme.primary)),
+                  child: const Text(
+                    'Xem tất cả ➔',
+                    style: TextStyle(color: AppTheme.primary),
+                  ),
                 ),
               ],
             ),
@@ -322,7 +441,10 @@ class HomeDashboardScreen extends StatelessWidget {
                 ),
                 TextButton(
                   onPressed: () => onNavigateTab?.call(2), // Shop Map tab
-                  child: const Text('Xem bản đồ ➔', style: TextStyle(color: AppTheme.primaryDark)),
+                  child: const Text(
+                    'Xem bản đồ ➔',
+                    style: TextStyle(color: AppTheme.primaryDark),
+                  ),
                 ),
               ],
             ),
@@ -334,16 +456,23 @@ class HomeDashboardScreen extends StatelessWidget {
                 onTap: () {
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (_) => ShopDetailScreen(shopId: s.id)),
+                    MaterialPageRoute(
+                      builder: (_) => ShopDetailScreen(shopId: s.id),
+                    ),
                   );
                 },
                 onChatTap: () {
                   final chatProvider = context.read<ChatProvider>();
-                  final thread = chatProvider.getOrCreateThreadForShop(s.id, s.name, s.imageUrl);
+                  final thread = chatProvider.getOrCreateThreadForShop(
+                    s.id,
+                    s.name,
+                    s.imageUrl,
+                  );
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => ChatConversationScreen(threadId: thread.id),
+                      builder: (_) =>
+                          ChatConversationScreen(threadId: thread.id),
                     ),
                   );
                 },

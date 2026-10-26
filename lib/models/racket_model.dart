@@ -13,7 +13,7 @@ class Racket {
   final double swingWeight; // e.g. 88.0 kg.cm²
   final String frameProfile; // Khung hộp (Box), Khung vát (Aero), Lai (Aero-Box)
   final double maxTensionLbs; // e.g. 28.0 lbs
-  
+
   // Current String status
   final String currentStringModel;
   final double initialTensionLbs;
@@ -133,6 +133,60 @@ class Racket {
       gripCondition: gripCondition ?? this.gripCondition,
       imageUrl: imageUrl ?? this.imageUrl,
       tensionLogs: tensionLogs ?? this.tensionLogs,
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'brand': brand,
+      'modelName': modelName,
+      'editionGen': editionGen,
+      'colorway': colorway,
+      'weightU': weightU,
+      'gripG': gripG,
+      'shaftStiffness': shaftStiffness,
+      'balancePointMm': balancePointMm,
+      'swingWeight': swingWeight,
+      'frameProfile': frameProfile,
+      'maxTensionLbs': maxTensionLbs,
+      'currentStringModel': currentStringModel,
+      'initialTensionLbs': initialTensionLbs,
+      'strungDate': strungDate?.toIso8601String(),
+      'sessionsPlayed': sessionsPlayed,
+      'gripCondition': gripCondition,
+      'imageUrl': imageUrl,
+      'tensionLogs': tensionLogs.map((log) => log.toMap()).toList(),
+    };
+  }
+
+  factory Racket.fromMap(Map<String, dynamic> map, {String? docId}) {
+    final logsRaw = map['tensionLogs'] as List<dynamic>? ?? [];
+    return Racket(
+      id: map['id']?.toString() ?? docId ?? '',
+      brand: map['brand']?.toString() ?? 'Yonex',
+      modelName: map['modelName']?.toString() ?? '',
+      editionGen: map['editionGen']?.toString() ?? 'Bản gốc',
+      colorway: map['colorway']?.toString() ?? 'Tiêu chuẩn',
+      weightU: map['weightU']?.toString() ?? '4U (80-84g)',
+      gripG: map['gripG']?.toString() ?? 'G5',
+      shaftStiffness: map['shaftStiffness']?.toString() ?? 'Cứng (Stiff)',
+      balancePointMm: (map['balancePointMm'] as num?)?.toInt() ?? 298,
+      swingWeight: (map['swingWeight'] as num?)?.toDouble() ?? 85.0,
+      frameProfile: map['frameProfile']?.toString() ?? 'Lai (Aero-Box)',
+      maxTensionLbs: (map['maxTensionLbs'] as num?)?.toDouble() ?? 28.0,
+      currentStringModel: map['currentStringModel']?.toString() ?? 'Chưa đan',
+      initialTensionLbs:
+          (map['initialTensionLbs'] as num?)?.toDouble() ?? 0.0,
+      strungDate: map['strungDate'] != null
+          ? DateTime.tryParse(map['strungDate'].toString())
+          : null,
+      sessionsPlayed: (map['sessionsPlayed'] as num?)?.toInt() ?? 0,
+      gripCondition: map['gripCondition']?.toString() ?? 'Bọc quấn cán mới',
+      imageUrl: map['imageUrl']?.toString(),
+      tensionLogs: logsRaw
+          .map((item) => TensionLog.fromMap(Map<String, dynamic>.from(item)))
+          .toList(),
     );
   }
 }

@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../../models/racket_model.dart';
 import '../../models/tension_log_model.dart';
@@ -6,6 +8,7 @@ import '../../models/notification_model.dart';
 import '../../providers/racket_provider.dart';
 import '../../providers/notification_provider.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/racket_image_widget.dart';
 
 class AddEditRacketScreen extends StatefulWidget {
   final Racket? existingRacket;
@@ -18,6 +21,7 @@ class AddEditRacketScreen extends StatefulWidget {
 
 class _AddEditRacketScreenState extends State<AddEditRacketScreen> {
   final _formKey = GlobalKey<FormState>();
+  final ImagePicker _imagePicker = ImagePicker();
 
   String _brand = 'Yonex';
   final _modelController = TextEditingController();
@@ -33,16 +37,29 @@ class _AddEditRacketScreenState extends State<AddEditRacketScreen> {
 
   final _stringModelController = TextEditingController(text: 'Yonex BG65');
   final _initialTensionController = TextEditingController(text: '24.0');
+  String? _imageUrl;
 
-  final List<String> _brands = ['Yonex', 'Victor', 'Li-Ning', 'Mizuno', 'Felet', 'Kumpoo'];
-  final List<String> _weights = ['3U (85-89g)', '4U (80-84g)', '5U (75-79g)', '6U/F (<75g)'];
+  final List<String> _brands = [
+    'Yonex',
+    'Victor',
+    'Li-Ning',
+    'Mizuno',
+    'Felet',
+    'Kumpoo',
+  ];
+  final List<String> _weights = [
+    '3U (85-89g)',
+    '4U (80-84g)',
+    '5U (75-79g)',
+    '6U/F (<75g)',
+  ];
   final List<String> _grips = ['G4', 'G5', 'G6'];
   final List<String> _stiffnessList = [
     'Rất cứng (Extra Stiff)',
     'Cứng (Stiff)',
     'Trung bình (Medium)',
     'Dẻo (Flexible)',
-    'Rất dẻo (Hi-Flex)'
+    'Rất dẻo (Hi-Flex)',
   ];
   final List<String> _frames = [
     'Lai (Aero-Box)',
@@ -55,18 +72,22 @@ class _AddEditRacketScreenState extends State<AddEditRacketScreen> {
     super.initState();
     if (widget.existingRacket != null) {
       final r = widget.existingRacket!;
-      _brand = r.brand;
+      _brand = _brands.contains(r.brand) ? r.brand : _brands.first;
       _modelController.text = r.modelName;
       _editionController.text = r.editionGen;
       _colorwayController.text = r.colorway;
-      _weightU = r.weightU;
-      _gripG = r.gripG;
-      _shaftStiffness = r.shaftStiffness;
-      _balancePointMm = r.balancePointMm.toDouble();
-      _frameProfile = r.frameProfile;
-      _maxTensionLbs = r.maxTensionLbs;
+      _weightU = _weights.contains(r.weightU) ? r.weightU : _weights[1];
+      _gripG = _grips.contains(r.gripG) ? r.gripG : _grips[1];
+      _shaftStiffness = _stiffnessList.contains(r.shaftStiffness)
+          ? r.shaftStiffness
+          : _stiffnessList[1];
+      _balancePointMm = r.balancePointMm.toDouble().clamp(280.0, 315.0);
+      _frameProfile =
+          _frames.contains(r.frameProfile) ? r.frameProfile : _frames.first;
+      _maxTensionLbs = r.maxTensionLbs.clamp(24.0, 35.0);
       _stringModelController.text = r.currentStringModel;
       _initialTensionController.text = r.initialTensionLbs.toString();
+      _imageUrl = r.imageUrl;
     }
   }
 
@@ -80,17 +101,101 @@ class _AddEditRacketScreenState extends State<AddEditRacketScreen> {
     super.dispose();
   }
 
-  void _saveRacket() {
+  Future<void> _pickImage(ImageSource source) async {
+    try {
+      final XFile? picked = await _imagePicker.pickImage(
+        source: source,
+        maxWidth: 600,
+        maxHeight: 600,
+        imageQuality: 70,
+      );
+      if (picked != null) {
+        final bytes = await picked.readAsBytes();
+        final base64String = 'data:image/jpeg;base64,${base64Encode(bytes)}';
+        if (!mounted) return;
+        setState(() {
+          _imageUrl = base64String;
+        });
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Không thể chọn ảnh: $e'),
+          backgroundColor: AppTheme.danger,
+        ),
+      );
+    }
+  }
+
+  void _showUrlInputDialog() {
+    final urlController = TextEditingController(
+      text: (_imageUrl != null && _imageUrl!.startsWith('http'))
+          ? _imageUrl
+          : '',
+    );
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: const Text(
+          'Nhập đường dẫn ảnh (URL)',
+          style: TextStyle(
+            color: AppTheme.textPrimary,
+            fontWeight: FontWeight.bold,
+            fontSize: 16,
+          ),
+        ),
+        content: TextField(
+          controller: urlController,
+          decoration: const InputDecoration(
+            labelText: 'Link ảnh cây vợt (https://...)',
+            prefixIcon: Icon(Icons.link_rounded, color: AppTheme.primary),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text(
+              'Hủy',
+              style: TextStyle(color: AppTheme.textSecondary),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final url = urlController.text.trim();
+              setState(() {
+                _imageUrl = url.isEmpty ? null : url;
+              });
+              Navigator.pop(ctx);
+            },
+            child: const Text('Áp dụng'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _saveRacket() async {
     if (_formKey.currentState!.validate()) {
-      final tensionVal = double.tryParse(_initialTensionController.text.trim()) ?? 0.0;
-      final racketId = widget.existingRacket?.id ?? 'racket_${DateTime.now().millisecondsSinceEpoch}';
+      final tensionVal =
+          double.tryParse(_initialTensionController.text.trim()) ?? 0.0;
+      final existing = widget.existingRacket;
+      final racketId =
+          existing?.id ?? 'racket_${DateTime.now().millisecondsSinceEpoch}';
 
       final newRacket = Racket(
         id: racketId,
         brand: _brand,
         modelName: _modelController.text.trim(),
-        editionGen: _editionController.text.trim().isEmpty ? 'Tiêu chuẩn' : _editionController.text.trim(),
-        colorway: _colorwayController.text.trim().isEmpty ? 'Mặc định' : _colorwayController.text.trim(),
+        editionGen: _editionController.text.trim().isEmpty
+            ? 'Tiêu chuẩn'
+            : _editionController.text.trim(),
+        colorway: _colorwayController.text.trim().isEmpty
+            ? 'Mặc định'
+            : _colorwayController.text.trim(),
         weightU: _weightU,
         gripG: _gripG,
         shaftStiffness: _shaftStiffness,
@@ -99,40 +204,50 @@ class _AddEditRacketScreenState extends State<AddEditRacketScreen> {
         maxTensionLbs: _maxTensionLbs,
         currentStringModel: _stringModelController.text.trim(),
         initialTensionLbs: tensionVal,
-        strungDate: DateTime.now(),
-        sessionsPlayed: 0,
-        tensionLogs: [
-          if (tensionVal > 0)
-            TensionLog(
-              id: 'log_init_${DateTime.now().millisecondsSinceEpoch}',
-              racketId: racketId,
-              stringModel: _stringModelController.text.trim(),
-              tensionLbs: tensionVal,
-              strungDate: DateTime.now(),
-              shopName: 'Đan ban đầu khi thêm vào Gara',
-              notes: 'Khởi tạo thông số vợt',
-            ),
-        ],
+        strungDate: existing?.strungDate ?? DateTime.now(),
+        sessionsPlayed: existing?.sessionsPlayed ?? 0,
+        gripCondition: existing?.gripCondition ?? 'Bọc quấn cán mới',
+        imageUrl: _imageUrl,
+        tensionLogs: existing != null
+            ? existing.tensionLogs
+            : [
+                if (tensionVal > 0)
+                  TensionLog(
+                    id: 'log_init_${DateTime.now().millisecondsSinceEpoch}',
+                    racketId: racketId,
+                    stringModel: _stringModelController.text.trim(),
+                    tensionLbs: tensionVal,
+                    strungDate: DateTime.now(),
+                    shopName: 'Đan ban đầu khi thêm vào Gara',
+                    notes: 'Khởi tạo thông số vợt',
+                  ),
+              ],
       );
 
       final provider = context.read<RacketProvider>();
-      if (widget.existingRacket != null) {
-        provider.updateRacket(newRacket);
+      if (existing != null) {
+        await provider.updateRacket(newRacket);
       } else {
-        provider.addRacket(newRacket);
-        context.read<NotificationProvider>().addNotification(
-          title: '🏸 Đã thêm vợt mới vào Gara!',
-          message: 'Cây vợt $_brand ${_modelController.text} đã sẵn sàng được theo dõi vòng đời cước.',
-          type: NotificationType.orderStatus,
-          targetRacketId: racketId,
-        );
+        await provider.addRacket(newRacket);
+        if (mounted) {
+          context.read<NotificationProvider>().addNotification(
+            title: '🏸 Đã thêm vợt mới vào Gara!',
+            message:
+                'Cây vợt $_brand ${_modelController.text} đã được lưu lên Cloud Firestore.',
+            type: NotificationType.orderStatus,
+            targetRacketId: racketId,
+          );
+        }
       }
 
+      if (!mounted) return;
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Đã lưu thành công cây vợt $_brand ${_modelController.text}!'),
-          backgroundColor: AppTheme.primary,
+          content: Text(
+            'Đã lưu thành công cây vợt $_brand ${_modelController.text} lên Cloud Firestore!',
+          ),
+          backgroundColor: AppTheme.primaryDark,
         ),
       );
     }
@@ -142,7 +257,11 @@ class _AddEditRacketScreenState extends State<AddEditRacketScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.existingRacket != null ? 'Chỉnh Sửa Vợt' : 'Thêm Vợt Vào Gara'),
+        title: Text(
+          widget.existingRacket != null
+              ? 'Chỉnh Sửa Vợt'
+              : 'Thêm Vợt Vào Gara',
+        ),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
@@ -151,13 +270,101 @@ class _AddEditRacketScreenState extends State<AddEditRacketScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Group 0: Hình ảnh cây vợt (Racket Avatar)
+              _sectionHeader('Ảnh Đại Diện Cây Vợt (Hiển thị ở Trang Chủ & Gara)'),
+              const SizedBox(height: 10),
+              RacketImageWidget(
+                imageUrl: _imageUrl,
+                brand: _brand,
+                height: 175,
+                borderRadius: 16,
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _pickImage(ImageSource.gallery),
+                      icon: const Icon(
+                        Icons.photo_library_outlined,
+                        size: 18,
+                        color: AppTheme.primary,
+                      ),
+                      label: const Text(
+                        'Thư viện ảnh',
+                        style: TextStyle(
+                          color: AppTheme.textPrimary,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: AppTheme.primary),
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _pickImage(ImageSource.camera),
+                      icon: const Icon(
+                        Icons.camera_alt_outlined,
+                        size: 18,
+                        color: AppTheme.primaryDark,
+                      ),
+                      label: const Text(
+                        'Chụp ảnh',
+                        style: TextStyle(
+                          color: AppTheme.textPrimary,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: AppTheme.border),
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton(
+                    onPressed: _showUrlInputDialog,
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: AppTheme.border),
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 10,
+                        horizontal: 12,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.link_rounded,
+                      size: 18,
+                      color: AppTheme.accent,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+
               // Group 1: Brand & Model
               _sectionHeader('1. Định Danh & Thương Hiệu'),
               const SizedBox(height: 10),
               DropdownButtonFormField<String>(
                 value: _brand,
                 decoration: const InputDecoration(labelText: 'Hãng sản xuất'),
-                items: _brands.map((b) => DropdownMenuItem(value: b, child: Text(b))).toList(),
+                items: _brands
+                    .map((b) => DropdownMenuItem(value: b, child: Text(b)))
+                    .toList(),
                 onChanged: (v) => setState(() => _brand = v!),
               ),
               const SizedBox(height: 14),
@@ -167,7 +374,8 @@ class _AddEditRacketScreenState extends State<AddEditRacketScreen> {
                   labelText: 'Tên Model Vợt *',
                   hintText: 'Ví dụ: Astrox 100ZZ, Ryuga II, Halbertec 8000',
                 ),
-                validator: (v) => (v == null || v.isEmpty) ? 'Vui lòng nhập tên model' : null,
+                validator: (v) =>
+                    (v == null || v.isEmpty) ? 'Vui lòng nhập tên model' : null,
               ),
               const SizedBox(height: 14),
               Row(
@@ -203,8 +411,11 @@ class _AddEditRacketScreenState extends State<AddEditRacketScreen> {
                   Expanded(
                     child: DropdownButtonFormField<String>(
                       value: _weightU,
-                      decoration: const InputDecoration(labelText: 'Trọng lượng (U)'),
-                      items: _weights.map((w) => DropdownMenuItem(value: w, child: Text(w))).toList(),
+                      decoration:
+                          const InputDecoration(labelText: 'Trọng lượng (U)'),
+                      items: _weights
+                          .map((w) => DropdownMenuItem(value: w, child: Text(w)))
+                          .toList(),
                       onChanged: (v) => setState(() => _weightU = v!),
                     ),
                   ),
@@ -213,7 +424,9 @@ class _AddEditRacketScreenState extends State<AddEditRacketScreen> {
                     child: DropdownButtonFormField<String>(
                       value: _gripG,
                       decoration: const InputDecoration(labelText: 'Cỡ cán (G)'),
-                      items: _grips.map((g) => DropdownMenuItem(value: g, child: Text(g))).toList(),
+                      items: _grips
+                          .map((g) => DropdownMenuItem(value: g, child: Text(g)))
+                          .toList(),
                       onChanged: (v) => setState(() => _gripG = v!),
                     ),
                   ),
@@ -222,8 +435,11 @@ class _AddEditRacketScreenState extends State<AddEditRacketScreen> {
               const SizedBox(height: 14),
               DropdownButtonFormField<String>(
                 value: _shaftStiffness,
-                decoration: const InputDecoration(labelText: 'Độ cứng thân đũa (Flex)'),
-                items: _stiffnessList.map((s) => DropdownMenuItem(value: s, child: Text(s))).toList(),
+                decoration:
+                    const InputDecoration(labelText: 'Độ cứng thân đũa (Flex)'),
+                items: _stiffnessList
+                    .map((s) => DropdownMenuItem(value: s, child: Text(s)))
+                    .toList(),
                 onChanged: (v) => setState(() => _shaftStiffness = v!),
               ),
               const SizedBox(height: 16),
@@ -232,10 +448,16 @@ class _AddEditRacketScreenState extends State<AddEditRacketScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text('Điểm cân bằng tĩnh: ', style: TextStyle(color: AppTheme.textSecondary)),
+                  const Text(
+                    'Điểm cân bằng tĩnh: ',
+                    style: TextStyle(color: AppTheme.textSecondary),
+                  ),
                   Text(
                     '${_balancePointMm.toInt()} mm (${_balancePointMm > 295 ? "Nặng đầu - Thiên công" : (_balancePointMm < 290 ? "Nhẹ đầu - Thiên thủ" : "Cân bằng")})',
-                    style: const TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold),
+                    style: const TextStyle(
+                      color: AppTheme.primary,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ],
               ),
@@ -252,8 +474,16 @@ class _AddEditRacketScreenState extends State<AddEditRacketScreen> {
 
               DropdownButtonFormField<String>(
                 value: _frameProfile,
-                decoration: const InputDecoration(labelText: 'Biên dạng khung vợt'),
-                items: _frames.map((f) => DropdownMenuItem(value: f, child: Text(f, style: const TextStyle(fontSize: 13)))).toList(),
+                decoration:
+                    const InputDecoration(labelText: 'Biên dạng khung vợt'),
+                items: _frames
+                    .map(
+                      (f) => DropdownMenuItem(
+                        value: f,
+                        child: Text(f, style: const TextStyle(fontSize: 13)),
+                      ),
+                    )
+                    .toList(),
                 onChanged: (v) => setState(() => _frameProfile = v!),
               ),
               const SizedBox(height: 16),
@@ -262,10 +492,16 @@ class _AddEditRacketScreenState extends State<AddEditRacketScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text('Sức căng tối đa khuyến nghị của khung: ', style: TextStyle(color: AppTheme.textSecondary)),
+                  const Text(
+                    'Sức căng tối đa khuyến nghị của khung: ',
+                    style: TextStyle(color: AppTheme.textSecondary),
+                  ),
                   Text(
                     '${_maxTensionLbs.toInt()} lbs',
-                    style: const TextStyle(color: AppTheme.accent, fontWeight: FontWeight.bold),
+                    style: const TextStyle(
+                      color: AppTheme.accent,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ],
               ),
@@ -300,7 +536,8 @@ class _AddEditRacketScreenState extends State<AddEditRacketScreen> {
                     flex: 2,
                     child: TextFormField(
                       controller: _initialTensionController,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
                       decoration: const InputDecoration(
                         labelText: 'Lực căng (lbs)',
                         suffixText: 'lbs',
@@ -320,8 +557,13 @@ class _AddEditRacketScreenState extends State<AddEditRacketScreen> {
                     padding: const EdgeInsets.symmetric(vertical: 16),
                   ),
                   child: Text(
-                    widget.existingRacket != null ? 'Cập Nhật Vợt' : 'Lưu Vợt Vào Gara Ngay',
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    widget.existingRacket != null
+                        ? 'Cập Nhật Vợt'
+                        : 'Lưu Vợt Vào Gara Ngay',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
               ),
