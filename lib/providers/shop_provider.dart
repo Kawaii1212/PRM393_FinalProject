@@ -6,11 +6,10 @@ import 'package:latlong2/latlong.dart';
 import '../config/api_config.dart';
 import '../models/shop_model.dart';
 import '../models/product_model.dart';
-import '../data/mock_data.dart';
 
 class ShopProvider with ChangeNotifier {
-  List<Shop> _shops = List.from(MockData.initialShops);
-  final List<Product> _products = List.from(MockData.initialProducts);
+  List<Shop> _shops = [];
+  final List<Product> _products = [];
 
   String _searchQuery = '';
   // Mặc định là null: Chỉ khi người dùng click vào cửa hàng trên bản đồ mới hiện phần giới thiệu
@@ -71,27 +70,9 @@ class ShopProvider with ChangeNotifier {
     }
   }
 
-  /// Lấy danh sách toàn bộ sản phẩm & dịch vụ cho cửa hàng (hỗ trợ cả các shop lấy động từ Google Places API)
+  /// Lấy danh sách toàn bộ sản phẩm & dịch vụ cho cửa hàng
   List<Product> getProductsForShop(String shopId) {
-    final direct = _products.where((p) => p.shopId == shopId).toList();
-    if (direct.isNotEmpty) return direct;
-    // Với các cửa hàng thực tế trả về từ Google Places API, ánh xạ bảng giá dịch vụ đan vợt tiêu chuẩn
-    return _products
-        .where((p) => p.shopId == 'shop_01')
-        .map(
-          (p) => Product(
-            id: '${p.id}_$shopId',
-            shopId: shopId,
-            name: p.name,
-            category: p.category,
-            price: p.price,
-            description: p.description,
-            imageUrl: p.imageUrl,
-            availableColors: p.availableColors,
-            isService: p.isService,
-          ),
-        )
-        .toList();
+    return _products.where((p) => p.shopId == shopId).toList();
   }
 
   List<Product> getServicesForShop(String shopId) {
@@ -214,12 +195,6 @@ class ShopProvider with ChangeNotifier {
       discoveredShops = await _fetchRealPOIShopsFallback(center);
     }
 
-    // 3. Nếu khu vực quá hẻo lánh không có POI nào trong bán kính tìm kiếm, tạo danh sách dự phòng theo vị trí hiện tại
-    if (discoveredShops.isEmpty) {
-      await _generateNearbyShopsAround(center);
-      return;
-    }
-
     // Sắp xếp cửa hàng gần nhất lên đầu
     discoveredShops.sort((a, b) => a.distanceKm.compareTo(b.distanceKm));
     _shops = discoveredShops;
@@ -316,7 +291,6 @@ class ShopProvider with ChangeNotifier {
     LatLng center,
   ) {
     const Distance distanceCalc = Distance();
-    final templates = MockData.initialShops;
     final List<Shop> result = [];
 
     for (int i = 0; i < places.length; i++) {
@@ -328,24 +302,20 @@ class ShopProvider with ChangeNotifier {
       final lng = (loc['longitude'] as num?)?.toDouble();
       if (lat == null || lng == null) continue;
 
-      final template = templates[i % templates.length];
       final displayNameObj = item['displayName'] as Map<String, dynamic>?;
-      final name = displayNameObj?['text']?.toString() ?? template.name;
+      final name = displayNameObj?['text']?.toString() ?? 'Cửa hàng thể thao';
       final address =
           item['formattedAddress']?.toString() ?? 'Khu vực $_userAreaLabel';
-      final rating = (item['rating'] as num?)?.toDouble() ?? template.rating;
-      final reviewCount =
-          (item['userRatingCount'] as num?)?.toInt() ?? template.reviewCount;
-      final phone = item['nationalPhoneNumber']?.toString() ?? template.phone;
+      final rating = (item['rating'] as num?)?.toDouble() ?? 0.0;
+      final reviewCount = (item['userRatingCount'] as num?)?.toInt() ?? 0;
+      final phone = item['nationalPhoneNumber']?.toString() ?? 'Chưa cập nhật';
 
-      String openHours = template.openHours;
+      String openHours = 'Chưa cập nhật giờ mở cửa';
       final openingHoursObj =
           item['regularOpeningHours'] as Map<String, dynamic>?;
       if (openingHoursObj != null && openingHoursObj['openNow'] != null) {
         final isOpen = openingHoursObj['openNow'] == true;
-        openHours = isOpen
-            ? 'Đang mở cửa • 08:00 - 21:30'
-            : 'Tạm đóng cửa • Mở lại 08:00';
+        openHours = isOpen ? 'Đang mở cửa' : 'Đang đóng cửa';
       }
 
       final distKm = distanceCalc.as(
@@ -365,11 +335,11 @@ class ShopProvider with ChangeNotifier {
           longitude: lng,
           rating: double.parse(rating.toStringAsFixed(1)),
           reviewCount: reviewCount,
-          machineModel: template.machineModel,
-          stringerCert: template.stringerCert,
+          machineModel: 'Chưa cập nhật thông tin máy đan',
+          stringerCert: 'Chưa cập nhật chứng chỉ thợ đan',
           phone: phone,
           openHours: openHours,
-          imageUrl: template.imageUrl,
+          imageUrl: '',
           distanceKm: double.parse(distKm.toStringAsFixed(1)),
         ),
       );
@@ -383,7 +353,6 @@ class ShopProvider with ChangeNotifier {
     LatLng center,
   ) {
     const Distance distanceCalc = Distance();
-    final templates = MockData.initialShops;
     final List<Shop> list = [];
 
     for (int i = 0; i < results.length && i < 10; i++) {
@@ -396,21 +365,19 @@ class ShopProvider with ChangeNotifier {
       final lng = (loc['lng'] as num?)?.toDouble();
       if (lat == null || lng == null) continue;
 
-      final template = templates[i % templates.length];
-      final name = item['name']?.toString() ?? template.name;
+      final name = item['name']?.toString() ?? 'Cửa hàng thể thao';
       final address = item['formatted_address']?.toString() ??
           item['vicinity']?.toString() ??
           'Khu vực $_userAreaLabel';
-      final rating = (item['rating'] as num?)?.toDouble() ?? template.rating;
-      final reviewCount =
-          (item['user_ratings_total'] as num?)?.toInt() ?? template.reviewCount;
+      final rating = (item['rating'] as num?)?.toDouble() ?? 0.0;
+      final reviewCount = (item['user_ratings_total'] as num?)?.toInt() ?? 0;
 
-      String openHours = template.openHours;
+      String openHours = 'Chưa cập nhật giờ mở cửa';
       final openingHours = item['opening_hours'] as Map<String, dynamic>?;
       if (openingHours != null && openingHours['open_now'] != null) {
         openHours = openingHours['open_now'] == true
-            ? 'Đang mở cửa • 08:00 - 21:30'
-            : 'Tạm đóng cửa • Mở lại 08:00';
+            ? 'Đang mở cửa'
+            : 'Đang đóng cửa';
       }
 
       final distKm = distanceCalc.as(
@@ -430,11 +397,11 @@ class ShopProvider with ChangeNotifier {
           longitude: lng,
           rating: double.parse(rating.toStringAsFixed(1)),
           reviewCount: reviewCount,
-          machineModel: template.machineModel,
-          stringerCert: template.stringerCert,
-          phone: template.phone,
+          machineModel: 'Chưa cập nhật thông tin máy đan',
+          stringerCert: 'Chưa cập nhật chứng chỉ thợ đan',
+          phone: 'Chưa cập nhật',
           openHours: openHours,
-          imageUrl: template.imageUrl,
+          imageUrl: '',
           distanceKm: double.parse(distKm.toStringAsFixed(1)),
         ),
       );
@@ -447,7 +414,6 @@ class ShopProvider with ChangeNotifier {
   /// khi Google Cloud API Key chưa được kích hoạt thanh toán (Billing)
   Future<List<Shop>> _fetchRealPOIShopsFallback(LatLng center) async {
     const Distance distanceCalc = Distance();
-    final templates = MockData.initialShops;
 
     try {
       final radius = ApiConfig.searchRadiusMeters.toInt();
@@ -486,11 +452,8 @@ out center 10;
           }
           if (lat == null || lng == null) continue;
 
-          final template = templates[poiShops.length % templates.length];
           final rawName = tags['name']?.toString().trim();
-          final shopName = (rawName != null && rawName.isNotEmpty)
-              ? rawName
-              : template.name;
+          if (rawName == null || rawName.isEmpty) continue;
 
           final street = tags['addr:street']?.toString() ?? '';
           final houseNum = tags['addr:housenumber']?.toString() ?? '';
@@ -517,21 +480,21 @@ out center 10;
           poiShops.add(
             Shop(
               id: 'poi_${el['id'] ?? i}',
-              name: shopName,
+              name: rawName,
               address: address,
               district: district,
               city: city,
               latitude: lat,
               longitude: lng,
-              rating: template.rating,
-              reviewCount: template.reviewCount,
-              machineModel: template.machineModel,
-              stringerCert: template.stringerCert,
+              rating: 0.0,
+              reviewCount: 0,
+              machineModel: 'Chưa cập nhật thông tin máy đan',
+              stringerCert: 'Chưa cập nhật chứng chỉ thợ đan',
               phone: tags['phone']?.toString() ??
                   tags['contact:phone']?.toString() ??
-                  template.phone,
-              openHours: tags['opening_hours']?.toString() ?? template.openHours,
-              imageUrl: template.imageUrl,
+                  'Chưa cập nhật',
+              openHours: tags['opening_hours']?.toString() ?? 'Chưa cập nhật',
+              imageUrl: '',
               distanceKm: double.parse(distKm.toStringAsFixed(1)),
             ),
           );
@@ -561,56 +524,6 @@ out center 10;
       return parts.last;
     }
     return 'Việt Nam';
-  }
-
-  /// Đặt tọa độ các cửa hàng cầu lông xung quanh vị trí người dùng & lấy tên đường thực tế
-  /// (Chỉ dùng khi thiết bị ngoại tuyến hoặc khu vực không có dữ liệu trên bản đồ)
-  Future<void> _generateNearbyShopsAround(LatLng center) async {
-    const Distance distanceCalc = Distance();
-
-    // Độ lệch tọa độ xung quanh vị trí người dùng (~0.5km đến ~1.8km)
-    final offsets = <List<double>>[
-      [0.0042, 0.0035],  // ~0.6 km Đông Bắc
-      [-0.0055, 0.0062], // ~0.9 km Đông Nam
-      [0.0085, -0.0075], // ~1.3 km Tây Bắc
-    ];
-
-    final baseTemplates = MockData.initialShops;
-    final List<Shop> updatedShops = [];
-    for (int i = 0; i < baseTemplates.length; i++) {
-      final baseShop = baseTemplates[i];
-      final offset = offsets[i % offsets.length];
-      final shopLat = center.latitude + offset[0];
-      final shopLng = center.longitude + offset[1];
-
-      final distKm = distanceCalc.as(
-        LengthUnit.Kilometer,
-        center,
-        LatLng(shopLat, shopLng),
-      );
-
-      final geoInfo = await _reverseGeocode(shopLat, shopLng);
-
-      updatedShops.add(
-        baseShop.copyWith(
-          latitude: shopLat,
-          longitude: shopLng,
-          address: geoInfo['shortAddress'] ?? 'Gần $_userAreaLabel',
-          district: geoInfo['district'] ?? 'Khu vực lân cận',
-          city: geoInfo['city'] ?? 'Việt Nam',
-          distanceKm: double.parse(distKm.toStringAsFixed(1)),
-        ),
-      );
-    }
-
-    // Sắp xếp cửa hàng gần nhất lên đầu
-    updatedShops.sort((a, b) => a.distanceKm.compareTo(b.distanceKm));
-    _shops = updatedShops;
-
-    // Nếu đang có shop được chọn thì cập nhật lại thông tin mới của shop đó
-    if (_selectedShop != null) {
-      _selectedShop = getShopById(_selectedShop!.id);
-    }
   }
 
   Future<Map<String, String>> _reverseGeocode(double lat, double lng) async {

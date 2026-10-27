@@ -279,7 +279,17 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> with SingleTickerPr
   Widget build(BuildContext context) {
     final shopProvider = context.watch<ShopProvider>();
     final cartProvider = context.watch<CartProvider>();
-    final shop = shopProvider.getShopById(widget.shopId) ?? shopProvider.shops.first;
+    final shop = shopProvider.getShopById(widget.shopId) ??
+        (shopProvider.shops.isNotEmpty ? shopProvider.shops.first : null);
+
+    if (shop == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Chi Tiết Cửa Hàng')),
+        body: const Center(
+          child: Text('Không tìm thấy thông tin cửa hàng này.'),
+        ),
+      );
+    }
 
     final services = shopProvider.getServicesForShop(shop.id);
     final accessories = shopProvider.getAccessoriesForShop(shop.id);
@@ -469,153 +479,175 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> with SingleTickerPr
           controller: _tabController,
           children: [
             // Services list
-            ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: services.length,
-              itemBuilder: (context, idx) {
-                final srv = services[idx];
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: AppTheme.surface,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: AppTheme.border),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 48,
-                        height: 48,
-                        decoration: BoxDecoration(
-                          color: AppTheme.surfaceLight,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: const Icon(Icons.flash_on_rounded, color: AppTheme.primary, size: 28),
+            services.isEmpty
+                ? const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Text(
+                        'Cửa hàng này hiện chưa cập nhật danh sách dịch vụ đan cước.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: AppTheme.textMuted),
                       ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                    ),
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: services.length,
+                    itemBuilder: (context, idx) {
+                      final srv = services[idx];
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: AppTheme.surface,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: AppTheme.border),
+                        ),
+                        child: Row(
                           children: [
-                            Text(
-                              srv.name,
-                              style: const TextStyle(
-                                color: AppTheme.textPrimary,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 15,
+                            Container(
+                              width: 48,
+                              height: 48,
+                              decoration: BoxDecoration(
+                                color: AppTheme.surfaceLight,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: const Icon(Icons.flash_on_rounded, color: AppTheme.primary, size: 28),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    srv.name,
+                                    style: const TextStyle(
+                                      color: AppTheme.textPrimary,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 15,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    srv.description,
+                                    style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    _currencyFormat.format(srv.price),
+                                    style: const TextStyle(
+                                      color: AppTheme.primary,
+                                      fontWeight: FontWeight.w900,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                            const SizedBox(height: 4),
-                            Text(
-                              srv.description,
-                              style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              _currencyFormat.format(srv.price),
-                              style: const TextStyle(
-                                color: AppTheme.primary,
-                                fontWeight: FontWeight.w900,
-                                fontSize: 16,
+                            const SizedBox(width: 10),
+                            ElevatedButton(
+                              onPressed: () => _showBookServiceModal(context, srv),
+                              style: ElevatedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                               ),
+                              child: const Text('Đặt Đan', style: TextStyle(fontWeight: FontWeight.bold)),
                             ),
                           ],
                         ),
-                      ),
-                      const SizedBox(width: 10),
-                      ElevatedButton(
-                        onPressed: () => _showBookServiceModal(context, srv),
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                        ),
-                        child: const Text('Đặt Đan', style: TextStyle(fontWeight: FontWeight.bold)),
-                      ),
-                    ],
+                      );
+                    },
                   ),
-                );
-              },
-            ),
 
             // Accessories list
-            ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: accessories.length,
-              itemBuilder: (context, idx) {
-                final prod = accessories[idx];
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: AppTheme.surface,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: AppTheme.border),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 50,
-                        height: 50,
-                        decoration: BoxDecoration(
-                          color: AppTheme.surfaceLight,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: const Icon(Icons.sports_tennis_rounded, color: AppTheme.primaryDark, size: 28),
+            accessories.isEmpty
+                ? const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Text(
+                        'Cửa hàng này hiện chưa cập nhật danh sách cước & phụ kiện.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: AppTheme.textMuted),
                       ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                    ),
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: accessories.length,
+                    itemBuilder: (context, idx) {
+                      final prod = accessories[idx];
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: AppTheme.surface,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: AppTheme.border),
+                        ),
+                        child: Row(
                           children: [
-                            Text(
-                              prod.name,
-                              style: const TextStyle(
-                                color: AppTheme.textPrimary,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 14,
+                            Container(
+                              width: 50,
+                              height: 50,
+                              decoration: BoxDecoration(
+                                color: AppTheme.surfaceLight,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: const Icon(Icons.sports_tennis_rounded, color: AppTheme.primaryDark, size: 28),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    prod.name,
+                                    style: const TextStyle(
+                                      color: AppTheme.textPrimary,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 3),
+                                  Text(
+                                    prod.description,
+                                    style: const TextStyle(color: AppTheme.textMuted, fontSize: 11),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    _currencyFormat.format(prod.price),
+                                    style: const TextStyle(
+                                      color: AppTheme.primary,
+                                      fontWeight: FontWeight.w900,
+                                      fontSize: 15,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                            const SizedBox(height: 3),
-                            Text(
-                              prod.description,
-                              style: const TextStyle(color: AppTheme.textMuted, fontSize: 11),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              _currencyFormat.format(prod.price),
-                              style: const TextStyle(
-                                color: AppTheme.primary,
-                                fontWeight: FontWeight.w900,
-                                fontSize: 15,
+                            const SizedBox(width: 10),
+                            IconButton(
+                              icon: const Icon(Icons.add_shopping_cart_rounded, color: AppTheme.primary),
+                              style: IconButton.styleFrom(
+                                backgroundColor: AppTheme.surfaceLight,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                               ),
+                              onPressed: () {
+                                context.read<CartProvider>().addToCart(prod);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Đã thêm ${prod.name} vào giỏ!'),
+                                    duration: const Duration(seconds: 1),
+                                  ),
+                                );
+                              },
                             ),
                           ],
                         ),
-                      ),
-                      const SizedBox(width: 10),
-                      IconButton(
-                        icon: const Icon(Icons.add_shopping_cart_rounded, color: AppTheme.primary),
-                        style: IconButton.styleFrom(
-                          backgroundColor: AppTheme.surfaceLight,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        ),
-                        onPressed: () {
-                          context.read<CartProvider>().addToCart(prod);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Đã thêm ${prod.name} vào giỏ!'),
-                              duration: const Duration(seconds: 1),
-                            ),
-                          );
-                        },
-                      ),
-                    ],
+                      );
+                    },
                   ),
-                );
-              },
-            ),
           ],
         ),
       ),
