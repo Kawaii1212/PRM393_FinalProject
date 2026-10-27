@@ -32,4 +32,40 @@ class Shop {
     required this.imageUrl,
     this.distanceKm = 1.2,
   });
+
+  Shop copyWith({
+    String? id,
+    String? name,
+    String? address,
+    String? district,
+    String? city,
+    double? latitude,
+    double? longitude,
+    double? rating,
+    int? reviewCount,
+    String? machineModel,
+    String? stringerCert,
+    String? phone,
+    String? openHours,
+    String? imageUrl,
+    double? distanceKm,
+  }) {
+    return Shop(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      address: address ?? this.address,
+      district: district ?? this.district,
+      city: city ?? this.city,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
+      rating: rating ?? this.rating,
+      reviewCount: reviewCount ?? this.reviewCount,
+      machineModel: machineModel ?? this.machineModel,
+      stringerCert: stringerCert ?? this.stringerCert,
+      phone: phone ?? this.phone,
+      openHours: openHours ?? this.openHours,
+      imageUrl: imageUrl ?? this.imageUrl,
+      distanceKm: distanceKm ?? this.distanceKm,
+    );
+  }
 }
