@@ -46,6 +46,7 @@ class UserModel {
   final UserRole role;
   final String playStyle;
   final String? shopName;
+  final bool isBlocked;
   final DateTime createdAt;
 
   const UserModel({
@@ -56,6 +57,7 @@ class UserModel {
     this.role = UserRole.player,
     this.playStyle = 'Thiên công 4U • Sẵn sàng ra sân 🏸',
     this.shopName,
+    this.isBlocked = false,
     required this.createdAt,
   });
 
@@ -67,6 +69,7 @@ class UserModel {
     UserRole? role,
     String? playStyle,
     String? shopName,
+    bool? isBlocked,
     DateTime? createdAt,
   }) {
     return UserModel(
@@ -77,6 +80,7 @@ class UserModel {
       role: role ?? this.role,
       playStyle: playStyle ?? this.playStyle,
       shopName: shopName ?? this.shopName,
+      isBlocked: isBlocked ?? this.isBlocked,
       createdAt: createdAt ?? this.createdAt,
     );
   }
@@ -90,6 +94,7 @@ class UserModel {
       'role': role.name,
       'playStyle': playStyle,
       'shopName': shopName,
+      'isBlocked': isBlocked,
       'createdAt': createdAt.toIso8601String(),
     };
   }
@@ -104,6 +109,7 @@ class UserModel {
       playStyle: map['playStyle']?.toString() ??
           'Thiên công 4U • Sẵn sàng ra sân 🏸',
       shopName: map['shopName']?.toString(),
+      isBlocked: map['isBlocked'] == true,
       createdAt: map['createdAt'] != null
           ? (DateTime.tryParse(map['createdAt'].toString()) ?? DateTime.now())
           : DateTime.now(),

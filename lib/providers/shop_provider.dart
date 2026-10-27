@@ -1,5 +1,8 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
@@ -8,8 +11,13 @@ import '../models/shop_model.dart';
 import '../models/product_model.dart';
 
 class ShopProvider with ChangeNotifier {
+  static const String _prefShopsKey = 'gearsports_admin_shops';
+  static const String _prefProductsKey = 'gearsports_admin_products';
+
   List<Shop> _shops = [];
-  final List<Product> _products = [];
+  List<Shop> _discoveredShops = [];
+  List<Shop> _firestoreShops = [];
+  List<Product> _products = [];
 
   String _searchQuery = '';
   // Mặc định là null: Chỉ khi người dùng click vào cửa hàng trên bản đồ mới hiện phần giới thiệu
@@ -21,7 +29,290 @@ class ShopProvider with ChangeNotifier {
   bool _hasInitializedLocation = false;
 
   ShopProvider() {
+    syncCatalogFromFirestore();
     locateUserAndLoadNearbyShops();
+  }
+
+  bool get _isFirebaseReady {
+    try {
+      return Firebase.apps.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  List<Shop> get firestoreShops => List.unmodifiable(_firestoreShops);
+  List<Product> get allProducts => List.unmodifiable(_products);
+
+  /// Danh sách tất cả cửa hàng dành cho Admin kiểm duyệt (bao gồm Chờ duyệt, Đang hoạt động, Đã vô hiệu hóa)
+  List<Shop> get allShopsForAdmin {
+    final mapById = <String, Shop>{};
+    for (final s in _firestoreShops) {
+      mapById[s.id] = s;
+    }
+    for (final s in _discoveredShops) {
+      mapById.putIfAbsent(s.id, () => s);
+    }
+    final list = mapById.values.toList();
+    int rankStatus(String st) {
+      if (st == 'pending') return 0;
+      if (st == 'approved') return 1;
+      return 2;
+    }
+
+    list.sort((a, b) {
+      final cmp = rankStatus(a.status).compareTo(rankStatus(b.status));
+      if (cmp != 0) return cmp;
+      return a.distanceKm.compareTo(b.distanceKm);
+    });
+    return list;
+  }
+
+  int get pendingShopsCount =>
+      allShopsForAdmin.where((s) => s.isPending).length;
+  int get approvedShopsCount =>
+      allShopsForAdmin.where((s) => s.isApproved).length;
+  int get disabledShopsCount =>
+      allShopsForAdmin.where((s) => s.isDisabled).length;
+
+  /// Tìm cửa hàng của Chủ Shop đang đăng nhập (`ownerUid`)
+  Shop? getShopForOwner(String ownerUid) {
+    try {
+      return _firestoreShops.firstWhere((s) => s.ownerUid == ownerUid);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Đồng bộ Cửa hàng & Sản phẩm/Dịch vụ từ Cloud Firestore (`shops`, `products`)
+  Future<void> syncCatalogFromFirestore() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      // 1. Đọc từ Local Cache trước
+      final rawShops = prefs.getString(_prefShopsKey);
+      if (rawShops != null && rawShops.isNotEmpty) {
+        final list = jsonDecode(rawShops) as List<dynamic>;
+        _firestoreShops = list
+            .map((e) => Shop.fromMap(Map<String, dynamic>.from(e)))
+            .toList();
+      }
+
+      final rawProds = prefs.getString(_prefProductsKey);
+      if (rawProds != null && rawProds.isNotEmpty) {
+        final list = jsonDecode(rawProds) as List<dynamic>;
+        _products = list
+            .map((e) => Product.fromMap(Map<String, dynamic>.from(e)))
+            .toList();
+      }
+      _mergeFirestoreShopsIntoList();
+      notifyListeners();
+
+      // 2. Đồng bộ với Cloud Firestore
+      if (_isFirebaseReady) {
+        final shopSnap = await FirebaseFirestore.instance
+            .collection('shops')
+            .get()
+            .timeout(const Duration(seconds: 6));
+        if (shopSnap.docs.isNotEmpty || _firestoreShops.isEmpty) {
+          final remoteShops = shopSnap.docs
+              .map((d) => Shop.fromMap(d.data(), docId: d.id))
+              .toList();
+          final mergedMap = <String, Shop>{};
+          for (final s in _firestoreShops) {
+            mergedMap[s.id] = s;
+          }
+          for (final s in remoteShops) {
+            mergedMap[s.id] = s;
+          }
+          _firestoreShops = mergedMap.values.toList();
+        }
+
+        final prodSnap = await FirebaseFirestore.instance
+            .collection('products')
+            .get()
+            .timeout(const Duration(seconds: 6));
+        if (prodSnap.docs.isNotEmpty || _products.isEmpty) {
+          final remoteProds = prodSnap.docs
+              .map((d) => Product.fromMap(d.data(), docId: d.id))
+              .toList();
+          final mergedProdMap = <String, Product>{};
+          for (final p in _products) {
+            mergedProdMap[p.id] = p;
+          }
+          for (final p in remoteProds) {
+            mergedProdMap[p.id] = p;
+          }
+          _products = mergedProdMap.values.toList();
+        }
+
+        await prefs.setString(
+          _prefShopsKey,
+          jsonEncode(_firestoreShops.map((s) => s.toMap()).toList()),
+        );
+        await prefs.setString(
+          _prefProductsKey,
+          jsonEncode(_products.map((p) => p.toMap()).toList()),
+        );
+        _mergeFirestoreShopsIntoList();
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('syncCatalogFromFirestore warning: $e');
+    }
+  }
+
+  void _mergeFirestoreShopsIntoList() {
+    const Distance distanceCalc = Distance();
+    final updatedFirestore = _firestoreShops.map((s) {
+      final dist = distanceCalc.as(
+        LengthUnit.Kilometer,
+        _userLocation,
+        LatLng(s.latitude, s.longitude),
+      );
+      return s.copyWith(distanceKm: double.parse(dist.toStringAsFixed(1)));
+    }).toList();
+
+    _firestoreShops = updatedFirestore;
+
+    final mapById = <String, Shop>{};
+    for (final s in _discoveredShops) {
+      if (s.isApproved) {
+        mapById[s.id] = s;
+      }
+    }
+    for (final s in updatedFirestore) {
+      if (s.isApproved) {
+        mapById[s.id] = s;
+      } else {
+        // Nếu shop bị vô hiệu hóa hoặc đang chờ duyệt thì không hiển thị trên bản đồ Người chơi
+        mapById.remove(s.id);
+      }
+    }
+
+    final merged = mapById.values.toList()
+      ..sort((a, b) => a.distanceKm.compareTo(b.distanceKm));
+    _shops = merged;
+  }
+
+  /// Thêm hoặc cập nhật Cửa hàng trên Cloud Firestore (`shops/{id}`)
+  Future<void> upsertShop(Shop shop) async {
+    final idx = _firestoreShops.indexWhere((s) => s.id == shop.id);
+    if (idx != -1) {
+      _firestoreShops[idx] = shop;
+    } else {
+      _firestoreShops.insert(0, shop);
+    }
+    _mergeFirestoreShopsIntoList();
+    notifyListeners();
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        _prefShopsKey,
+        jsonEncode(_firestoreShops.map((s) => s.toMap()).toList()),
+      );
+      if (_isFirebaseReady) {
+        await FirebaseFirestore.instance
+            .collection('shops')
+            .doc(shop.id)
+            .set(shop.toMap(), SetOptions(merge: true))
+            .timeout(const Duration(seconds: 5));
+      }
+    } catch (e) {
+      debugPrint('upsertShop error: $e');
+    }
+  }
+
+  /// Admin phê duyệt (`approved`) hoặc vô hiệu hóa (`disabled`) Cửa hàng
+  Future<void> updateShopStatus(Shop shop, String newStatus) async {
+    final updated = shop.copyWith(status: newStatus);
+    await upsertShop(updated);
+  }
+
+  /// Xóa Cửa hàng khỏi Cloud Firestore (`shops/{id}`)
+  Future<void> deleteShop(String shopId) async {
+    _firestoreShops.removeWhere((s) => s.id == shopId);
+    _discoveredShops.removeWhere((s) => s.id == shopId);
+    _shops.removeWhere((s) => s.id == shopId);
+    if (_selectedShop?.id == shopId) {
+      _selectedShop = null;
+    }
+    notifyListeners();
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        _prefShopsKey,
+        jsonEncode(_firestoreShops.map((s) => s.toMap()).toList()),
+      );
+      if (_isFirebaseReady) {
+        await FirebaseFirestore.instance
+            .collection('shops')
+            .doc(shopId)
+            .delete()
+            .timeout(const Duration(seconds: 5));
+      }
+    } catch (e) {
+      debugPrint('deleteShop error: $e');
+    }
+  }
+
+  /// Thêm hoặc cập nhật Sản phẩm / Dịch vụ đan cước trên Cloud Firestore (`products/{id}`)
+  Future<void> upsertProduct(Product product) async {
+    final idx = _products.indexWhere((p) => p.id == product.id);
+    if (idx != -1) {
+      _products[idx] = product;
+    } else {
+      _products.insert(0, product);
+    }
+    notifyListeners();
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        _prefProductsKey,
+        jsonEncode(_products.map((p) => p.toMap()).toList()),
+      );
+      if (_isFirebaseReady) {
+        await FirebaseFirestore.instance
+            .collection('products')
+            .doc(product.id)
+            .set(product.toMap(), SetOptions(merge: true))
+            .timeout(const Duration(seconds: 5));
+      }
+    } catch (e) {
+      debugPrint('upsertProduct error: $e');
+    }
+  }
+
+  /// Admin kiểm duyệt hợp lệ (`approved`) hoặc đánh dấu vi phạm (`rejected`) vật phẩm/dịch vụ
+  Future<void> updateProductStatus(Product product, String newStatus) async {
+    final updated = product.copyWith(status: newStatus);
+    await upsertProduct(updated);
+  }
+
+  /// Xóa Sản phẩm / Dịch vụ khỏi Cloud Firestore (`products/{id}`)
+  Future<void> deleteProduct(String productId) async {
+    _products.removeWhere((p) => p.id == productId);
+    notifyListeners();
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        _prefProductsKey,
+        jsonEncode(_products.map((p) => p.toMap()).toList()),
+      );
+      if (_isFirebaseReady) {
+        await FirebaseFirestore.instance
+            .collection('products')
+            .doc(productId)
+            .delete()
+            .timeout(const Duration(seconds: 5));
+      }
+    } catch (e) {
+      debugPrint('deleteProduct error: $e');
+    }
   }
 
   LatLng get userLocation => _userLocation;
@@ -66,12 +357,26 @@ class ShopProvider with ChangeNotifier {
     try {
       return _shops.firstWhere((s) => s.id == id);
     } catch (_) {
-      return null;
+      try {
+        return _firestoreShops.firstWhere((s) => s.id == id);
+      } catch (_) {
+        return null;
+      }
     }
   }
 
-  /// Lấy danh sách toàn bộ sản phẩm & dịch vụ cho cửa hàng
+  /// Lấy danh sách sản phẩm & dịch vụ hợp lệ hiển thị cho Người chơi
   List<Product> getProductsForShop(String shopId) {
+    return _products
+        .where(
+          (p) =>
+              (p.shopId == shopId || p.shopId == 'all') && !p.isRejected,
+        )
+        .toList();
+  }
+
+  /// Lấy toàn bộ sản phẩm & dịch vụ của riêng một cửa hàng cho Chủ Shop / Admin quản lý
+  List<Product> getDirectProductsForShop(String shopId) {
     return _products.where((p) => p.shopId == shopId).toList();
   }
 
@@ -195,9 +500,10 @@ class ShopProvider with ChangeNotifier {
       discoveredShops = await _fetchRealPOIShopsFallback(center);
     }
 
-    // Sắp xếp cửa hàng gần nhất lên đầu
+    // Sắp xếp cửa hàng gần nhất lên đầu và gộp với cửa hàng trên Cloud Firestore
     discoveredShops.sort((a, b) => a.distanceKm.compareTo(b.distanceKm));
-    _shops = discoveredShops;
+    _discoveredShops = discoveredShops;
+    _mergeFirestoreShopsIntoList();
 
     if (_selectedShop != null) {
       _selectedShop = getShopById(_selectedShop!.id);

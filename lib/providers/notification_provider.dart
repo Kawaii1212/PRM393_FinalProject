@@ -1,14 +1,88 @@
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/notification_model.dart';
-import '../data/mock_data.dart';
 
 class NotificationProvider with ChangeNotifier {
-  final List<AppNotification> _notifications = List.from(MockData.initialNotifications);
+  static const String _prefSystemNotifsKey = 'gearsports_system_notifications';
+
+  final List<AppNotification> _notifications = [];
+
+  NotificationProvider() {
+    syncSystemNotifications();
+  }
+
+  bool get _isFirebaseReady {
+    try {
+      return Firebase.apps.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
 
   List<AppNotification> get notifications => List.unmodifiable(_notifications);
 
   int get unreadCount {
     return _notifications.where((n) => !n.isRead).length;
+  }
+
+  /// Đồng bộ thông báo hệ thống từ Cloud Firestore (`system_notifications`)
+  Future<void> syncSystemNotifications() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cachedRaw = prefs.getString(_prefSystemNotifsKey);
+      if (cachedRaw != null && cachedRaw.isNotEmpty) {
+        final decoded = jsonDecode(cachedRaw) as List<dynamic>;
+        final loaded = decoded
+            .map((e) => AppNotification.fromMap(Map<String, dynamic>.from(e)))
+            .toList();
+        _mergeNotifications(loaded);
+        notifyListeners();
+      }
+
+      if (_isFirebaseReady) {
+        final snap = await FirebaseFirestore.instance
+            .collection('system_notifications')
+            .orderBy('timestamp', descending: true)
+            .get()
+            .timeout(const Duration(seconds: 6));
+
+        final remoteNotifs = snap.docs
+            .map((doc) => AppNotification.fromMap(doc.data(), docId: doc.id))
+            .toList();
+        _mergeNotifications(remoteNotifs);
+        await _saveCache(prefs);
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('syncSystemNotifications warning: $e');
+    }
+  }
+
+  void _mergeNotifications(List<AppNotification> incoming) {
+    final mapById = <String, AppNotification>{};
+    for (final n in _notifications) {
+      mapById[n.id] = n;
+    }
+    for (final n in incoming) {
+      final existing = mapById[n.id];
+      if (existing != null) {
+        n.isRead = existing.isRead;
+      }
+      mapById[n.id] = n;
+    }
+    final list = mapById.values.toList()
+      ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+    _notifications
+      ..clear()
+      ..addAll(list);
+  }
+
+  Future<void> _saveCache(SharedPreferences prefs) async {
+    final encoded = jsonEncode(_notifications.map((n) => n.toMap()).toList());
+    await prefs.setString(_prefSystemNotifsKey, encoded);
   }
 
   void markAsRead(String id) {
@@ -44,6 +118,58 @@ class NotificationProvider with ChangeNotifier {
     );
     _notifications.insert(0, notif);
     notifyListeners();
+  }
+
+  /// Dành cho Admin: Phát thông báo toàn hệ thống và lưu lên Cloud Firestore (`system_notifications`)
+  Future<void> broadcastSystemNotification({
+    required String title,
+    required String message,
+    NotificationType type = NotificationType.promo,
+  }) async {
+    final notif = AppNotification(
+      id: 'sys_notif_${DateTime.now().millisecondsSinceEpoch}',
+      title: title.trim(),
+      message: message.trim(),
+      type: type,
+      timestamp: DateTime.now(),
+      isRead: false,
+    );
+    _notifications.insert(0, notif);
+    notifyListeners();
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await _saveCache(prefs);
+      if (_isFirebaseReady) {
+        await FirebaseFirestore.instance
+            .collection('system_notifications')
+            .doc(notif.id)
+            .set(notif.toMap())
+            .timeout(const Duration(seconds: 5));
+      }
+    } catch (e) {
+      debugPrint('broadcastSystemNotification error: $e');
+    }
+  }
+
+  /// Dành cho Admin: Xóa thông báo hệ thống khỏi Cloud Firestore
+  Future<void> deleteSystemNotification(String id) async {
+    _notifications.removeWhere((n) => n.id == id);
+    notifyListeners();
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await _saveCache(prefs);
+      if (_isFirebaseReady) {
+        await FirebaseFirestore.instance
+            .collection('system_notifications')
+            .doc(id)
+            .delete()
+            .timeout(const Duration(seconds: 5));
+      }
+    } catch (e) {
+      debugPrint('deleteSystemNotification error: $e');
+    }
   }
 
   void removeNotification(String id) {
