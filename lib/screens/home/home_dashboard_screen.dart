@@ -214,7 +214,7 @@ class HomeDashboardScreen extends StatelessWidget {
                             children: [
                               Flexible(
                                 child: Text(
-                                  'Chào bạn, ${currentUser?.fullName ?? 'Cường'}!',
+                                  'Chào bạn, ${currentUser?.fullName ?? 'Người chơi'}!',
                                   style: const TextStyle(
                                     color: AppTheme.textPrimary,
                                     fontWeight: FontWeight.bold,
@@ -413,18 +413,59 @@ class HomeDashboardScreen extends StatelessWidget {
             const SizedBox(height: 6),
 
             // List of top 2-3 rackets
-            for (var r in rackets.take(3))
-              RacketCard(
-                racket: r,
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => GearDetailScreen(racketId: r.id),
+            if (rackets.isEmpty)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: AppTheme.surface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppTheme.border),
+                ),
+                child: Column(
+                  children: [
+                    const Icon(
+                      Icons.sports_tennis_rounded,
+                      color: AppTheme.textMuted,
+                      size: 40,
                     ),
-                  );
-                },
-              ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Gara vợt của bạn đang trống',
+                      style: TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const AddEditRacketScreen(),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.add_rounded, size: 18),
+                      label: const Text('Thêm Vợt Đầu Tiên'),
+                    ),
+                  ],
+                ),
+              )
+            else
+              for (var r in rackets.take(3))
+                RacketCard(
+                  racket: r,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => GearDetailScreen(racketId: r.id),
+                      ),
+                    );
+                  },
+                ),
             const SizedBox(height: 18),
 
             // Section: Cửa Hàng Gợi Ý Gần Bạn
@@ -450,33 +491,49 @@ class HomeDashboardScreen extends StatelessWidget {
             ),
             const SizedBox(height: 8),
 
-            for (var s in shops)
-              ShopCard(
-                shop: s,
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => ShopDetailScreen(shopId: s.id),
-                    ),
-                  );
-                },
-                onChatTap: () {
-                  final chatProvider = context.read<ChatProvider>();
-                  final thread = chatProvider.getOrCreateThreadForShop(
-                    s.id,
-                    s.name,
-                    s.imageUrl,
-                  );
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) =>
-                          ChatConversationScreen(threadId: thread.id),
-                    ),
-                  );
-                },
-              ),
+            if (shops.isEmpty)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: AppTheme.surface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppTheme.border),
+                ),
+                child: const Text(
+                  'Chưa tìm thấy cửa hàng nào gần vị trí hiện tại.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: AppTheme.textSecondary),
+                ),
+              )
+            else
+              for (var s in shops)
+                ShopCard(
+                  shop: s,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => ShopDetailScreen(shopId: s.id),
+                      ),
+                    );
+                  },
+                  onChatTap: () {
+                    final chatProvider = context.read<ChatProvider>();
+                    final thread = chatProvider.getOrCreateThreadForShop(
+                      s.id,
+                      s.name,
+                      s.imageUrl,
+                    );
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            ChatConversationScreen(threadId: thread.id),
+                      ),
+                    );
+                  },
+                ),
             const SizedBox(height: 20),
           ],
         ),

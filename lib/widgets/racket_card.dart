@@ -7,11 +7,13 @@ import 'tension_badge.dart';
 class RacketCard extends StatelessWidget {
   final Racket racket;
   final VoidCallback onTap;
+  final VoidCallback? onDelete;
 
   const RacketCard({
     super.key,
     required this.racket,
     required this.onTap,
+    this.onDelete,
   });
 
   @override
@@ -61,9 +63,8 @@ class RacketCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Top Row: Brand Badge + Tension Status Badge
+              // Top Row: Brand Badge + Tension Status Badge + Optional Delete Button
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Container(
                     padding:
@@ -83,12 +84,35 @@ class RacketCard extends StatelessWidget {
                       ),
                     ),
                   ),
+                  const Spacer(),
                   TensionBadge(
                     currentTension: racket.estimatedCurrentTension,
                     initialTension: racket.initialTensionLbs,
                     lossPercent: racket.tensionLossPercent,
                     needsRestring: racket.needsRestring,
                   ),
+                  if (onDelete != null) ...[
+                    const SizedBox(width: 6),
+                    InkWell(
+                      onTap: onDelete,
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: AppTheme.danger.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: AppTheme.danger.withOpacity(0.35),
+                          ),
+                        ),
+                        child: const Icon(
+                          Icons.delete_outline_rounded,
+                          color: AppTheme.danger,
+                          size: 16,
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
               const SizedBox(height: 10),

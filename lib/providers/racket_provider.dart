@@ -5,10 +5,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/racket_model.dart';
 import '../models/tension_log_model.dart';
-import '../data/mock_data.dart';
 
 class RacketProvider with ChangeNotifier {
-  List<Racket> _rackets = List.from(MockData.initialRackets);
+  List<Racket> _rackets = [];
   String _selectedBrandFilter = 'Tất cả';
   String? _currentUserId;
   bool _isSyncing = false;
@@ -19,6 +18,19 @@ class RacketProvider with ChangeNotifier {
   List<Racket> get rackets {
     if (_selectedBrandFilter == 'Tất cả') {
       return List.unmodifiable(_rackets);
+    }
+    if (_selectedBrandFilter == 'Khác') {
+      const mainBrands = [
+        'yonex',
+        'victor',
+        'li-ning',
+        'mizuno',
+        'felet',
+        'kumpoo',
+      ];
+      return _rackets
+          .where((r) => !mainBrands.contains(r.brand.toLowerCase()))
+          .toList();
     }
     return _rackets
         .where(
@@ -67,7 +79,7 @@ class RacketProvider with ChangeNotifier {
     _currentUserId = uid;
 
     if (uid == null || uid.isEmpty) {
-      _rackets = List.from(MockData.initialRackets);
+      _rackets = [];
       notifyListeners();
       return;
     }
@@ -86,6 +98,9 @@ class RacketProvider with ChangeNotifier {
             .map((e) => Racket.fromMap(Map<String, dynamic>.from(e)))
             .toList();
         notifyListeners();
+      } else {
+        _rackets = [];
+        notifyListeners();
       }
 
       // 2. Đồng bộ với Cloud Firestore: users/{uid}/rackets
@@ -98,24 +113,10 @@ class RacketProvider with ChangeNotifier {
         final snapshot =
             await colRef.get().timeout(const Duration(seconds: 6));
 
-        if (snapshot.docs.isNotEmpty) {
-          _rackets = snapshot.docs
-              .map((doc) => Racket.fromMap(doc.data(), docId: doc.id))
-              .toList();
-          await _saveToLocalCache(prefs);
-        } else {
-          // Nếu tài khoản chưa có dữ liệu vợt trên Firestore, khởi tạo bộ vợt ban đầu lên Firestore
-          if (_rackets.isEmpty) {
-            _rackets = List.from(MockData.initialRackets);
-          }
-          for (final racket in _rackets) {
-            await colRef
-                .doc(racket.id)
-                .set(racket.toMap())
-                .timeout(const Duration(seconds: 4));
-          }
-          await _saveToLocalCache(prefs);
-        }
+        _rackets = snapshot.docs
+            .map((doc) => Racket.fromMap(doc.data(), docId: doc.id))
+            .toList();
+        await _saveToLocalCache(prefs);
       }
     } catch (e) {
       debugPrint('RacketProvider syncForUser fallback: $e');
@@ -161,6 +162,36 @@ class RacketProvider with ChangeNotifier {
         sessionsPlayed: 0,
         tensionLogs: updatedLogs,
       );
+      _rackets[index] = updatedRacket;
+      notifyListeners();
+      await _persistRacketUpsert(updatedRacket);
+    }
+  }
+
+  /// Deletes a tension log and recalculates racket current string parameters from remaining logs
+  Future<void> deleteTensionLog(String racketId, String logId) async {
+    final index = _rackets.indexWhere((r) => r.id == racketId);
+    if (index != -1) {
+      final racket = _rackets[index];
+      final updatedLogs = List<TensionLog>.from(racket.tensionLogs)
+        ..removeWhere((l) => l.id == logId);
+
+      Racket updatedRacket;
+      if (updatedLogs.isNotEmpty) {
+        final latest = updatedLogs.first;
+        updatedRacket = racket.copyWith(
+          currentStringModel: latest.stringModel,
+          initialTensionLbs: latest.tensionLbs,
+          strungDate: latest.strungDate,
+          tensionLogs: updatedLogs,
+        );
+      } else {
+        updatedRacket = racket.copyWith(
+          currentStringModel: 'Chưa đan',
+          initialTensionLbs: 0.0,
+          tensionLogs: updatedLogs,
+        );
+      }
       _rackets[index] = updatedRacket;
       notifyListeners();
       await _persistRacketUpsert(updatedRacket);

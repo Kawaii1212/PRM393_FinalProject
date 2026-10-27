@@ -21,46 +21,8 @@ class AuthProvider extends ChangeNotifier {
   String? get errorMessage => _errorMessage;
   bool get isFirebaseAvailable => _isFirebaseAvailable;
 
-  // Danh sách tài khoản mẫu chuẩn theo SRS 2.4 (Người chơi, Chủ Shop, Admin)
-  static final Map<String, Map<String, dynamic>> _seedAccounts = {
-    'player@gearsports.vn': {
-      'password': '123456',
-      'user': UserModel(
-        uid: 'demo_player_01',
-        email: 'player@gearsports.vn',
-        fullName: 'Nguyễn Mạnh Cường',
-        phone: '0901234567',
-        role: UserRole.player,
-        playStyle: 'Thiên công 4U • Sẵn sàng ra sân 🏸',
-        createdAt: DateTime(2026, 1, 15),
-      ).toMap(),
-    },
-    'shop@gearsports.vn': {
-      'password': '123456',
-      'user': UserModel(
-        uid: 'demo_shop_01',
-        email: 'shop@gearsports.vn',
-        fullName: 'Minh Sport Badminton Pro',
-        phone: '0987654321',
-        role: UserRole.stringer,
-        playStyle: 'Chuyên gia đan vợt chuẩn quốc tế Yonex/Victor',
-        shopName: 'Minh Sport Badminton Pro',
-        createdAt: DateTime(2026, 1, 10),
-      ).toMap(),
-    },
-    'admin@gearsports.vn': {
-      'password': '123456',
-      'user': UserModel(
-        uid: 'demo_admin_01',
-        email: 'admin@gearsports.vn',
-        fullName: 'Quản Trị Viên Gear Sports',
-        phone: '0911223344',
-        role: UserRole.admin,
-        playStyle: 'Kiểm duyệt dữ liệu cộng đồng (UGC) & Hệ thống',
-        createdAt: DateTime(2026, 1, 1),
-      ).toMap(),
-    },
-  };
+  // Khởi tạo rỗng: Không sử dụng tài khoản mẫu hardcode
+  static final Map<String, Map<String, dynamic>> _seedAccounts = {};
 
   AuthProvider() {
     _checkFirebaseStatus();
@@ -348,16 +310,12 @@ class AuthProvider extends ChangeNotifier {
         }
       }
 
-      // Nếu thiết bị ảo chưa cấu hình SHA-1 cho Google Play Services, tạo phiên Google Demo đồng bộ Firestore
-      googleUser ??= UserModel(
-        uid: 'google_player_01',
-        email: 'badminton.google@gmail.com',
-        fullName: 'Người Chơi Google',
-        phone: '0909888777',
-        role: UserRole.player,
-        playStyle: 'Công thủ toàn diện • Yonex Astrox Fan 🏸',
-        createdAt: DateTime.now(),
-      );
+      if (googleUser == null) {
+        _errorMessage = 'Không thể xác thực tài khoản Google trên thiết bị này.';
+        _isLoading = false;
+        notifyListeners();
+        return false;
+      }
 
       if (_isFirebaseAvailable) {
         await _saveProfileToFirestore(googleUser);

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../models/racket_model.dart';
 import '../../providers/racket_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/racket_card.dart';
@@ -9,13 +10,81 @@ import 'add_edit_racket_screen.dart';
 class GearListScreen extends StatelessWidget {
   const GearListScreen({super.key});
 
+  void _confirmDeleteRacket(BuildContext context, Racket racket) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: const Row(
+          children: [
+            Icon(Icons.delete_forever_rounded, color: AppTheme.danger),
+            SizedBox(width: 8),
+            Text(
+              'Xóa vợt khỏi Gara?',
+              style: TextStyle(
+                color: AppTheme.textPrimary,
+                fontSize: 17,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          'Bạn có chắc chắn muốn xóa cây vợt "${racket.brand} ${racket.modelName}" khỏi Gara không? Toàn bộ lịch sử đan cước của cây vợt này cũng sẽ bị xóa.',
+          style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text(
+              'Hủy',
+              style: TextStyle(color: AppTheme.textSecondary),
+            ),
+          ),
+          ElevatedButton.icon(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await context.read<RacketProvider>().deleteRacket(racket.id);
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      'Đã xóa vợt ${racket.brand} ${racket.modelName} khỏi Gara!',
+                    ),
+                    backgroundColor: AppTheme.danger,
+                  ),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.danger,
+              foregroundColor: Colors.white,
+            ),
+            icon: const Icon(Icons.delete_outline_rounded, size: 18),
+            label: const Text('Xóa Vợt'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final racketProvider = context.watch<RacketProvider>();
     final rackets = racketProvider.rackets;
     final needingRestringCount = racketProvider.racketsNeedingRestring.length;
 
-    final brands = ['Tất cả', 'Yonex', 'Victor', 'Li-Ning', 'Mizuno'];
+    final brands = [
+      'Tất cả',
+      'Yonex',
+      'Victor',
+      'Li-Ning',
+      'Mizuno',
+      'Felet',
+      'Kumpoo',
+      'Khác',
+    ];
 
     return Scaffold(
       appBar: AppBar(
@@ -180,6 +249,7 @@ class GearListScreen extends StatelessWidget {
                             ),
                           );
                         },
+                        onDelete: () => _confirmDeleteRacket(context, racket),
                       );
                     },
                   ),

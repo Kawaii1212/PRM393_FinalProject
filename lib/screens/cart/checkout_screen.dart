@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import '../../providers/auth_provider.dart';
 import '../../providers/cart_provider.dart';
 import '../../providers/notification_provider.dart';
 import '../../models/notification_model.dart';
@@ -21,9 +22,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   int _paymentMethod = 0; // 0: Chuyển khoản VietQR, 1: Ví MoMo, 2: Tiền mặt khi lấy vợt
   String _selectedTimeSlot = '14:00 - 16:00 Hôm nay';
 
-  final _nameController = TextEditingController(text: 'Nguyễn Văn Cường');
-  final _phoneController = TextEditingController(text: '0909 888 777');
-  final _addressController = TextEditingController(text: '268 Lý Thường Kiệt, Q.10, TP.HCM');
+  late final TextEditingController _nameController;
+  late final TextEditingController _phoneController;
+  final _addressController = TextEditingController();
   final _noteController = TextEditingController();
 
   final List<String> _timeSlots = [
@@ -32,6 +33,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     '17:00 - 19:00 Hôm nay',
     '09:00 - 11:00 Ngày mai',
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    final user = context.read<AuthProvider>().currentUser;
+    _nameController = TextEditingController(text: user?.fullName ?? '');
+    _phoneController = TextEditingController(text: user?.phone ?? '');
+  }
 
   @override
   void dispose() {
@@ -50,7 +59,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     // 1. Tạo Notification cập nhật trạng thái đơn (FR-06 & Luồng Sơ Đồ)
     context.read<NotificationProvider>().addNotification(
       title: '🏸 Đặt lịch đan cước thành công! (#$orderId)',
-      message: 'Shop "Minh Sport" đã tiếp nhận đơn của bạn với tổng tiền ${_currencyFormat.format(orderTotal)}. Khung giờ hẹn: $_selectedTimeSlot.',
+      message: 'Đơn đặt lịch của bạn đã được ghi nhận với tổng tiền ${_currencyFormat.format(orderTotal)}. Khung giờ hẹn: $_selectedTimeSlot.',
       type: NotificationType.orderStatus,
       targetOrderId: orderId,
     );

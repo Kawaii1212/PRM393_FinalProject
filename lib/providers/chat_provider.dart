@@ -71,32 +71,7 @@ class ChatProvider with ChangeNotifier {
       );
       notifyListeners();
 
-      // Simulated auto-reply from shop stringer after 2 seconds
-      Future.delayed(const Duration(seconds: 2), () {
-        final currentIdx = _threads.indexWhere((t) => t.id == threadId);
-        if (currentIdx != -1) {
-          final curThread = _threads[currentIdx];
-          final replyMsg = ChatMessage(
-            id: 'msg_reply_${DateTime.now().millisecondsSinceEpoch}',
-            senderId: curThread.shopId,
-            text: 'Cảm ơn anh! Kỹ thuật viên của ${curThread.shopName} đã nhận thông tin. Anh có thể ghé shop hoặc đặt lịch trên app để được ưu tiên lên máy sớm nhất nhé!',
-            timestamp: DateTime.now(),
-            isFromUser: false,
-          );
-          final msgs = List<ChatMessage>.from(curThread.messages)..add(replyMsg);
-          _threads[currentIdx] = ChatThread(
-            id: curThread.id,
-            shopId: curThread.shopId,
-            shopName: curThread.shopName,
-            shopAvatar: curThread.shopAvatar,
-            lastMessage: replyMsg.text,
-            lastMessageTime: DateTime.now(),
-            unreadCount: 1,
-            messages: msgs,
-          );
-          notifyListeners();
-        }
-      });
+      // Không còn tin nhắn tự động giả lập từ shop
     }
   }
 

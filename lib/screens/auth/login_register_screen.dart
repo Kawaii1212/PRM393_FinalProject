@@ -16,14 +16,12 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
   bool _isLogin = true;
   final _formKey = GlobalKey<FormState>();
 
-  final _emailController = TextEditingController(text: 'player@gearsports.vn');
-  final _passwordController = TextEditingController(text: '123456');
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
-  final _playStyleController = TextEditingController(
-    text: 'Thiên công 4U • Sẵn sàng ra sân 🏸',
-  );
+  final _playStyleController = TextEditingController();
   final _shopNameController = TextEditingController();
 
   UserRole _selectedRole = UserRole.player;
@@ -46,31 +44,7 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
     context.read<AuthProvider>().clearError();
     setState(() {
       _isLogin = isLogin;
-      if (isLogin && _emailController.text.isEmpty) {
-        _emailController.text = 'player@gearsports.vn';
-        _passwordController.text = '123456';
-      } else if (!isLogin &&
-          _emailController.text == 'player@gearsports.vn') {
-        _emailController.clear();
-        _passwordController.clear();
-      }
     });
-  }
-
-  void _fillDemoAccount(String email, String label) {
-    context.read<AuthProvider>().clearError();
-    setState(() {
-      _isLogin = true;
-      _emailController.text = email;
-      _passwordController.text = '123456';
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Đã điền tài khoản mẫu: $label ($email)'),
-        backgroundColor: AppTheme.surfaceLight,
-        duration: const Duration(seconds: 1),
-      ),
-    );
   }
 
   Future<void> _handleSubmit() async {
@@ -664,65 +638,6 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
                           ),
                   ),
 
-                  // Chọn nhanh tài khoản mẫu (Theo 3 vai trò trong SRS 2.4)
-                  if (_isLogin) ...[
-                    const SizedBox(height: 14),
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: AppTheme.surface,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: AppTheme.border),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Điền nhanh tài khoản mẫu (SRS 2.4 - Mật khẩu: 123456):',
-                            style: TextStyle(
-                              color: AppTheme.textMuted,
-                              fontSize: 11,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: _DemoChip(
-                                  label: '🏸 Người chơi',
-                                  onTap: () => _fillDemoAccount(
-                                    'player@gearsports.vn',
-                                    'Người chơi',
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              Expanded(
-                                child: _DemoChip(
-                                  label: '🏪 Chủ Shop',
-                                  onTap: () => _fillDemoAccount(
-                                    'shop@gearsports.vn',
-                                    'Chủ Shop',
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              Expanded(
-                                child: _DemoChip(
-                                  label: '🛡️ Admin',
-                                  onTap: () => _fillDemoAccount(
-                                    'admin@gearsports.vn',
-                                    'Admin',
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-
                   const SizedBox(height: 16),
 
                   // Hoặc đăng nhập bằng
@@ -858,38 +773,6 @@ class _RoleOptionCard extends StatelessWidget {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _DemoChip extends StatelessWidget {
-  final String label;
-  final VoidCallback onTap;
-
-  const _DemoChip({required this.label, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 6),
-        decoration: BoxDecoration(
-          color: AppTheme.surfaceLight,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: AppTheme.border),
-        ),
-        child: Text(
-          label,
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            color: AppTheme.textPrimary,
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
-          ),
         ),
       ),
     );

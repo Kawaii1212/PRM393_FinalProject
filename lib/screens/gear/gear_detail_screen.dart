@@ -5,11 +5,9 @@ import '../../models/racket_model.dart';
 import '../../models/tension_log_model.dart';
 import '../../models/notification_model.dart';
 import '../../providers/racket_provider.dart';
-import '../../providers/shop_provider.dart';
 import '../../providers/notification_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/tension_badge.dart';
-import '../shop/shop_detail_screen.dart';
 import 'add_edit_racket_screen.dart';
 import '../../widgets/racket_image_widget.dart';
 
@@ -25,13 +23,137 @@ class GearDetailScreen extends StatefulWidget {
 class _GearDetailScreenState extends State<GearDetailScreen> {
   final _dateFormat = DateFormat('dd/MM/yyyy');
 
+  void _confirmDeleteRacket(BuildContext context, Racket racket) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: const Row(
+          children: [
+            Icon(Icons.delete_forever_rounded, color: AppTheme.danger),
+            SizedBox(width: 8),
+            Text(
+              'Xóa vợt khỏi Gara?',
+              style: TextStyle(
+                color: AppTheme.textPrimary,
+                fontSize: 17,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          'Bạn có chắc chắn muốn xóa cây vợt "${racket.brand} ${racket.modelName}" khỏi Gara không? Toàn bộ lịch sử đan cước của cây vợt này cũng sẽ bị xóa.',
+          style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text(
+              'Hủy',
+              style: TextStyle(color: AppTheme.textSecondary),
+            ),
+          ),
+          ElevatedButton.icon(
+            onPressed: () async {
+              Navigator.pop(ctx); // close dialog
+              await context.read<RacketProvider>().deleteRacket(racket.id);
+              if (context.mounted) {
+                Navigator.pop(context); // return to Gara list
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      'Đã xóa vợt ${racket.brand} ${racket.modelName} khỏi Gara!',
+                    ),
+                    backgroundColor: AppTheme.danger,
+                  ),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.danger,
+              foregroundColor: Colors.white,
+            ),
+            icon: const Icon(Icons.delete_outline_rounded, size: 18),
+            label: const Text('Xóa Vợt'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _confirmDeleteTensionLog(
+    BuildContext context,
+    Racket racket,
+    TensionLog log,
+  ) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: const Row(
+          children: [
+            Icon(Icons.delete_outline_rounded, color: AppTheme.danger),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Xóa nhật ký đan cước?',
+                style: TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          'Bạn có muốn xóa lần đan "${log.stringModel} (${log.tensionLbs} lbs)" ngày ${_dateFormat.format(log.strungDate)} không?',
+          style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text(
+              'Hủy',
+              style: TextStyle(color: AppTheme.textSecondary),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await context
+                  .read<RacketProvider>()
+                  .deleteTensionLog(racket.id, log.id);
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Đã xóa nhật ký đan cước!'),
+                    backgroundColor: AppTheme.danger,
+                  ),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.danger,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Xóa'),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showAddTensionLogDialog(BuildContext context, Racket racket) {
     final formKey = GlobalKey<FormState>();
-    final stringModelController = TextEditingController(text: 'Yonex Exbolt 65');
-    final tensionController = TextEditingController(text: '26.0');
-    final shopNameController = TextEditingController(text: 'Minh Sport Badminton Pro');
+    final stringModelController = TextEditingController();
+    final tensionController = TextEditingController();
+    final shopNameController = TextEditingController();
     final notesController = TextEditingController();
-    double tensionValue = 26.0;
+    double tensionValue = 0.0;
     bool isWarning = false;
 
     showModalBottomSheet(
@@ -251,6 +373,11 @@ class _GearDetailScreenState extends State<GearDetailScreen> {
               );
             },
           ),
+          IconButton(
+            icon: const Icon(Icons.delete_outline_rounded, color: AppTheme.danger),
+            tooltip: 'Xóa vợt khỏi Gara',
+            onPressed: () => _confirmDeleteRacket(context, racket),
+          ),
         ],
       ),
       body: SingleChildScrollView(
@@ -391,7 +518,7 @@ class _GearDetailScreenState extends State<GearDetailScreen> {
                     ),
                   ),
 
-                  // Button if needing restring
+                  // Alert if needing restring (Tạm thời bỏ tính năng đặt lịch đan cước trực tiếp)
                   if (racket.needsRestring) ...[
                     const SizedBox(height: 14),
                     Container(
@@ -401,42 +528,17 @@ class _GearDetailScreenState extends State<GearDetailScreen> {
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(color: AppTheme.danger.withOpacity(0.4)),
                       ),
-                      child: Column(
+                      child: const Row(
                         children: [
-                          Row(
-                            children: const [
-                              Icon(Icons.warning_amber_rounded, color: AppTheme.danger),
-                              SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  'Cước đã chùng quá hạn! Độ đàn hồi giảm gây tốn lực cổ tay và tăng nguy cơ chấn thương.',
-                                  style: TextStyle(
-                                    color: AppTheme.danger,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 10),
-                          SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton.icon(
-                              onPressed: () {
-                                final shop = context.read<ShopProvider>().shops.first;
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => ShopDetailScreen(shopId: shop.id),
-                                  ),
-                                );
-                              },
-                              icon: const Icon(Icons.flash_on_rounded, size: 18),
-                              label: const Text('Đặt Lịch Đan Cước Lại Cho Cây Này Ngay'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppTheme.danger,
-                                foregroundColor: Colors.white,
+                          Icon(Icons.warning_amber_rounded, color: AppTheme.danger),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Cước đã chùng quá hạn! Độ đàn hồi giảm gây tốn lực cổ tay và tăng nguy cơ chấn thương.',
+                              style: TextStyle(
+                                color: AppTheme.danger,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
                           ),
@@ -492,22 +594,30 @@ class _GearDetailScreenState extends State<GearDetailScreen> {
 
             // Tension History Logs (Nhật Ký Đan Cước - Yêu Cầu SRS & Screen Flow)
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  'Nhật Ký Đan Cước (Tension Log)',
-                  style: TextStyle(
-                    color: AppTheme.textPrimary,
-                    fontSize: 17,
-                    fontWeight: FontWeight.bold,
+                const Expanded(
+                  child: Text(
+                    'Nhật Ký Đan Cước (Tension Log)',
+                    style: TextStyle(
+                      color: AppTheme.textPrimary,
+                      fontSize: 17,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
                 TextButton.icon(
                   onPressed: () => _showAddTensionLogDialog(context, racket),
-                  icon: const Icon(Icons.add, size: 18, color: AppTheme.primary),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  ),
+                  icon: const Icon(Icons.add_circle_outline_rounded, size: 18, color: AppTheme.primary),
                   label: const Text(
                     'Thêm lần đan',
-                    style: TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold),
+                    style: TextStyle(
+                      color: AppTheme.primary,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                    ),
                   ),
                 ),
               ],
@@ -538,75 +648,209 @@ class _GearDetailScreenState extends State<GearDetailScreen> {
                 itemCount: racket.tensionLogs.length,
                 itemBuilder: (context, idx) {
                   final log = racket.tensionLogs[idx];
+                  final isLatest = idx == 0;
                   return Container(
                     margin: const EdgeInsets.only(bottom: 10),
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
                       color: AppTheme.surface,
                       borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: AppTheme.border),
+                      border: Border.all(
+                        color: isLatest
+                            ? AppTheme.primary.withOpacity(0.45)
+                            : AppTheme.border,
+                      ),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              log.stringModel,
-                              style: const TextStyle(
-                                color: AppTheme.textPrimary,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 15,
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: (isLatest
+                                        ? AppTheme.primary
+                                        : AppTheme.primaryDark)
+                                    .withOpacity(0.15),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Icon(
+                                Icons.line_weight_rounded,
+                                color: isLatest
+                                    ? AppTheme.primary
+                                    : AppTheme.primaryDark,
+                                size: 18,
                               ),
                             ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Flexible(
+                                        child: Text(
+                                          log.stringModel,
+                                          style: const TextStyle(
+                                            color: AppTheme.textPrimary,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 15,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      if (isLatest) ...[
+                                        const SizedBox(width: 6),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 6,
+                                            vertical: 2,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: AppTheme.primary.withOpacity(0.15),
+                                            borderRadius: BorderRadius.circular(4),
+                                          ),
+                                          child: const Text(
+                                            'Hiện tại',
+                                            style: TextStyle(
+                                              color: AppTheme.primary,
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Row(
+                                    children: [
+                                      const Icon(
+                                        Icons.calendar_today_rounded,
+                                        color: AppTheme.textMuted,
+                                        size: 12,
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        _dateFormat.format(log.strungDate),
+                                        style: const TextStyle(
+                                          color: AppTheme.textMuted,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 8),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 9,
+                                vertical: 5,
+                              ),
                               decoration: BoxDecoration(
                                 color: AppTheme.primaryDark.withOpacity(0.15),
-                                borderRadius: BorderRadius.circular(6),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: AppTheme.primaryDark.withOpacity(0.4),
+                                ),
                               ),
                               child: Text(
                                 '${log.tensionLbs} lbs',
                                 style: const TextStyle(
                                   color: AppTheme.primaryDark,
-                                  fontWeight: FontWeight.bold,
+                                  fontWeight: FontWeight.w800,
                                   fontSize: 12,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            InkWell(
+                              onTap: () => _confirmDeleteTensionLog(
+                                context,
+                                racket,
+                                log,
+                              ),
+                              borderRadius: BorderRadius.circular(8),
+                              child: Container(
+                                padding: const EdgeInsets.all(6),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.danger.withOpacity(0.12),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: AppTheme.danger.withOpacity(0.35),
+                                  ),
+                                ),
+                                child: const Icon(
+                                  Icons.delete_outline_rounded,
+                                  color: AppTheme.danger,
+                                  size: 16,
                                 ),
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 6),
-                        Row(
-                          children: [
-                            const Icon(Icons.calendar_today_rounded, color: AppTheme.textMuted, size: 13),
-                            const SizedBox(width: 4),
-                            Text(
-                              _dateFormat.format(log.strungDate),
-                              style: const TextStyle(color: AppTheme.textMuted, fontSize: 12),
+                        if (log.shopName.isNotEmpty) ...[
+                          const SizedBox(height: 10),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 7,
                             ),
-                            const SizedBox(width: 12),
-                            const Icon(Icons.store_rounded, color: AppTheme.textMuted, size: 13),
-                            const SizedBox(width: 4),
-                            Expanded(
-                              child: Text(
-                                log.shopName,
-                                style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
-                                overflow: TextOverflow.ellipsis,
-                              ),
+                            decoration: BoxDecoration(
+                              color: AppTheme.surfaceLight.withOpacity(0.6),
+                              borderRadius: BorderRadius.circular(8),
                             ),
-                          ],
-                        ),
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.store_rounded,
+                                  color: AppTheme.textSecondary,
+                                  size: 14,
+                                ),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    log.shopName,
+                                    style: const TextStyle(
+                                      color: AppTheme.textSecondary,
+                                      fontSize: 12,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                         if (log.notes.isNotEmpty) ...[
-                          const SizedBox(height: 6),
-                          Text(
-                            'Ghi chú: ${log.notes}',
-                            style: const TextStyle(
-                              color: AppTheme.textSecondary,
-                              fontStyle: FontStyle.italic,
-                              fontSize: 12,
-                            ),
+                          const SizedBox(height: 8),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Icon(
+                                Icons.notes_rounded,
+                                color: AppTheme.textMuted,
+                                size: 14,
+                              ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  log.notes,
+                                  style: const TextStyle(
+                                    color: AppTheme.textSecondary,
+                                    fontStyle: FontStyle.italic,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ],

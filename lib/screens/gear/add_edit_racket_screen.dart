@@ -24,6 +24,7 @@ class _AddEditRacketScreenState extends State<AddEditRacketScreen> {
   final ImagePicker _imagePicker = ImagePicker();
 
   String _brand = 'Yonex';
+  final _customBrandController = TextEditingController();
   final _modelController = TextEditingController();
   final _editionController = TextEditingController();
   final _colorwayController = TextEditingController();
@@ -35,8 +36,8 @@ class _AddEditRacketScreenState extends State<AddEditRacketScreen> {
   String _frameProfile = 'Lai (Aero-Box)';
   double _maxTensionLbs = 28.0;
 
-  final _stringModelController = TextEditingController(text: 'Yonex BG65');
-  final _initialTensionController = TextEditingController(text: '24.0');
+  final _stringModelController = TextEditingController();
+  final _initialTensionController = TextEditingController();
   String? _imageUrl;
 
   final List<String> _brands = [
@@ -46,6 +47,7 @@ class _AddEditRacketScreenState extends State<AddEditRacketScreen> {
     'Mizuno',
     'Felet',
     'Kumpoo',
+    'Khác',
   ];
   final List<String> _weights = [
     '3U (85-89g)',
@@ -72,7 +74,12 @@ class _AddEditRacketScreenState extends State<AddEditRacketScreen> {
     super.initState();
     if (widget.existingRacket != null) {
       final r = widget.existingRacket!;
-      _brand = _brands.contains(r.brand) ? r.brand : _brands.first;
+      if (_brands.contains(r.brand) && r.brand != 'Khác') {
+        _brand = r.brand;
+      } else {
+        _brand = 'Khác';
+        _customBrandController.text = r.brand == 'Khác' ? '' : r.brand;
+      }
       _modelController.text = r.modelName;
       _editionController.text = r.editionGen;
       _colorwayController.text = r.colorway;
@@ -93,6 +100,7 @@ class _AddEditRacketScreenState extends State<AddEditRacketScreen> {
 
   @override
   void dispose() {
+    _customBrandController.dispose();
     _modelController.dispose();
     _editionController.dispose();
     _colorwayController.dispose();
@@ -185,10 +193,13 @@ class _AddEditRacketScreenState extends State<AddEditRacketScreen> {
       final existing = widget.existingRacket;
       final racketId =
           existing?.id ?? 'racket_${DateTime.now().millisecondsSinceEpoch}';
+      final finalBrand = _brand == 'Khác'
+          ? _customBrandController.text.trim()
+          : _brand;
 
       final newRacket = Racket(
         id: racketId,
-        brand: _brand,
+        brand: finalBrand,
         modelName: _modelController.text.trim(),
         editionGen: _editionController.text.trim().isEmpty
             ? 'Tiêu chuẩn'
@@ -233,7 +244,7 @@ class _AddEditRacketScreenState extends State<AddEditRacketScreen> {
           context.read<NotificationProvider>().addNotification(
             title: '🏸 Đã thêm vợt mới vào Gara!',
             message:
-                'Cây vợt $_brand ${_modelController.text} đã được lưu lên Cloud Firestore.',
+                'Cây vợt $finalBrand ${_modelController.text} đã được lưu lên Cloud Firestore.',
             type: NotificationType.orderStatus,
             targetRacketId: racketId,
           );
@@ -245,7 +256,7 @@ class _AddEditRacketScreenState extends State<AddEditRacketScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Đã lưu thành công cây vợt $_brand ${_modelController.text} lên Cloud Firestore!',
+            'Đã lưu thành công cây vợt $finalBrand ${_modelController.text} lên Cloud Firestore!',
           ),
           backgroundColor: AppTheme.primaryDark,
         ),
@@ -367,6 +378,26 @@ class _AddEditRacketScreenState extends State<AddEditRacketScreen> {
                     .toList(),
                 onChanged: (v) => setState(() => _brand = v!),
               ),
+              if (_brand == 'Khác') ...[
+                const SizedBox(height: 14),
+                TextFormField(
+                  controller: _customBrandController,
+                  decoration: const InputDecoration(
+                    labelText: 'Nhập Tên Hãng Vợt *',
+                    hintText: 'Ví dụ: Apacs, Proace, Kawasaki, Gosen, VNB...',
+                    prefixIcon: Icon(
+                      Icons.branding_watermark_outlined,
+                      color: AppTheme.primary,
+                    ),
+                  ),
+                  validator: (v) {
+                    if (_brand == 'Khác' && (v == null || v.trim().isEmpty)) {
+                      return 'Vui lòng nhập tên hãng vợt';
+                    }
+                    return null;
+                  },
+                ),
+              ],
               const SizedBox(height: 14),
               TextFormField(
                 controller: _modelController,
