@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../models/user_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../theme/app_theme.dart';
+import '../admin/admin_dashboard_screen.dart';
 import '../sport/sport_selection_screen.dart';
 import 'login_register_screen.dart';
 
@@ -28,13 +30,16 @@ class _SplashScreenState extends State<SplashScreen> {
 
     if (!mounted) return;
     final isLoggedIn = results.first as bool;
+    final user = authProvider.currentUser;
 
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
-        builder: (_) => isLoggedIn
-            ? const SportSelectionScreen()
-            : const LoginRegisterScreen(),
+        builder: (_) => !isLoggedIn
+            ? const LoginRegisterScreen()
+            : (user?.role == UserRole.admin
+                ? const AdminDashboardScreen()
+                : const SportSelectionScreen()),
       ),
     );
   }

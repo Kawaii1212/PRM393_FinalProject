@@ -4,6 +4,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'theme/app_theme.dart';
 import 'providers/auth_provider.dart';
+import 'providers/admin_provider.dart';
 import 'providers/racket_provider.dart';
 import 'providers/shop_provider.dart';
 import 'providers/cart_provider.dart';
@@ -31,6 +32,7 @@ class GearSportsApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
+        ChangeNotifierProvider(create: (_) => AdminProvider()),
         ChangeNotifierProxyProvider<AuthProvider, RacketProvider>(
           create: (_) => RacketProvider(),
           update: (_, auth, racketProv) {

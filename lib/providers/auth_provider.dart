@@ -97,6 +97,13 @@ class AuthProvider extends ChangeNotifier {
           if (credential.user != null) {
             final userModel =
                 await _fetchOrCreateFirestoreProfile(credential.user!);
+            if (userModel.isBlocked) {
+              await FirebaseAuth.instance.signOut();
+              _errorMessage = 'Tài khoản này đã bị khóa bởi Quản trị viên.';
+              _isLoading = false;
+              notifyListeners();
+              return false;
+            }
             _currentUser = userModel;
             final prefs = await SharedPreferences.getInstance();
             await _saveSessionLocally(userModel, prefs);
@@ -156,6 +163,12 @@ class AuthProvider extends ChangeNotifier {
       // Kiểm tra trong Local Storage & Seed Accounts
       final localUser = await _verifyLocalCredentials(normalizedEmail, password);
       if (localUser != null) {
+        if (localUser.isBlocked) {
+          _errorMessage = 'Tài khoản này đã bị khóa bởi Quản trị viên.';
+          _isLoading = false;
+          notifyListeners();
+          return false;
+        }
         _currentUser = localUser;
         // Đồng bộ lên Firestore nếu Firebase sẵn sàng
         if (_isFirebaseAvailable) {
@@ -196,11 +209,13 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
 
     final normalizedEmail = email.trim().toLowerCase();
-    final defaultStyle = role == UserRole.stringer
-        ? 'Chuyên gia đan vợt & Phụ kiện cầu lông'
-        : (playStyle != null && playStyle.trim().isNotEmpty
-            ? playStyle.trim()
-            : 'Thiên công 4U • Sẵn sàng ra sân 🏸');
+    final defaultStyle = role == UserRole.admin
+        ? 'Quản trị viên hệ thống Gear Sports 🛡️'
+        : role == UserRole.stringer
+            ? 'Chuyên gia đan vợt & Phụ kiện cầu lông'
+            : (playStyle != null && playStyle.trim().isNotEmpty
+                ? playStyle.trim()
+                : 'Thiên công 4U • Sẵn sàng ra sân 🏸');
 
     try {
       _checkFirebaseStatus();

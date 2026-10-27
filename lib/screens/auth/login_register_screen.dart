@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../models/user_model.dart';
+import '../../models/shop_model.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/shop_provider.dart';
+import '../../providers/admin_provider.dart';
 import '../../theme/app_theme.dart';
+import '../admin/admin_dashboard_screen.dart';
 import '../sport/sport_selection_screen.dart';
 
 class LoginRegisterScreen extends StatefulWidget {
@@ -22,7 +26,15 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
   final _playStyleController = TextEditingController();
+
+  // Thông tin đầy đủ của Shop khi Chủ Shop đăng ký tài khoản
   final _shopNameController = TextEditingController();
+  final _shopAddressController = TextEditingController();
+  final _shopDistrictController = TextEditingController();
+  final _shopCityController = TextEditingController(text: 'TP. Hồ Chí Minh');
+  final _shopMachineController = TextEditingController();
+  final _shopCertController = TextEditingController();
+  final _shopOpenHoursController = TextEditingController(text: '08:00 - 21:30');
 
   UserRole _selectedRole = UserRole.player;
   bool _obscurePassword = true;
@@ -37,6 +49,12 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
     _phoneController.dispose();
     _playStyleController.dispose();
     _shopNameController.dispose();
+    _shopAddressController.dispose();
+    _shopDistrictController.dispose();
+    _shopCityController.dispose();
+    _shopMachineController.dispose();
+    _shopCertController.dispose();
+    _shopOpenHoursController.dispose();
     super.dispose();
   }
 
@@ -51,6 +69,8 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
     if (!_formKey.currentState!.validate()) return;
 
     final authProvider = context.read<AuthProvider>();
+    final shopProvider = context.read<ShopProvider>();
+    final adminProvider = context.read<AdminProvider>();
     bool success = false;
 
     if (_isLogin) {
@@ -65,13 +85,47 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
         email: _emailController.text,
         password: _passwordController.text,
         role: _selectedRole,
-        playStyle: _selectedRole == UserRole.player
-            ? _playStyleController.text
-            : 'Chủ cửa hàng ${_shopNameController.text.trim()}',
+        playStyle: _selectedRole == UserRole.admin
+            ? 'Quản trị viên hệ thống Gear Sports 🛡️'
+            : _selectedRole == UserRole.player
+                ? _playStyleController.text
+                : 'Chủ cửa hàng ${_shopNameController.text.trim()}',
         shopName: _selectedRole == UserRole.stringer
-            ? _shopNameController.text
+            ? _shopNameController.text.trim()
             : null,
       );
+
+      // Nếu đăng ký tài khoản Chủ Shop -> Tự động tạo hồ sơ Shop chờ Admin phê duyệt
+      if (success && _selectedRole == UserRole.stringer) {
+        final registeredUser = authProvider.currentUser;
+        if (registeredUser != null) {
+          final currentLoc = shopProvider.userLocation;
+          final newShop = Shop(
+            id: 'shop_${registeredUser.uid}',
+            name: _shopNameController.text.trim(),
+            address: _shopAddressController.text.trim(),
+            district: _shopDistrictController.text.trim(),
+            city: _shopCityController.text.trim(),
+            latitude: currentLoc.latitude,
+            longitude: currentLoc.longitude,
+            rating: 5.0,
+            reviewCount: 0,
+            machineModel: _shopMachineController.text.trim(),
+            stringerCert: _shopCertController.text.trim(),
+            phone: _phoneController.text.trim(),
+            openHours: _shopOpenHoursController.text.trim().isEmpty
+                ? '08:00 - 21:30'
+                : _shopOpenHoursController.text.trim(),
+            imageUrl: '',
+            ownerUid: registeredUser.uid,
+            ownerName: registeredUser.fullName,
+            ownerEmail: registeredUser.email,
+            status: 'pending', // Chờ Admin phê duyệt
+          );
+          await shopProvider.upsertShop(newShop);
+        }
+      }
+      await adminProvider.refreshAdminData();
     }
 
     if (!mounted) return;
@@ -83,14 +137,20 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
           content: Text(
             _isLogin
                 ? 'Đăng nhập thành công! Chào mừng ${user?.fullName ?? ''}'
-                : 'Đăng ký tài khoản thành công! Chào mừng ${user?.fullName ?? ''}',
+                : (user?.role == UserRole.stringer
+                    ? 'Đăng ký thành công! Hồ sơ cửa hàng đã được gửi chờ Admin phê duyệt.'
+                    : 'Đăng ký tài khoản thành công! Chào mừng ${user?.fullName ?? ''}'),
           ),
           backgroundColor: AppTheme.primaryDark,
         ),
       );
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => const SportSelectionScreen()),
+        MaterialPageRoute(
+          builder: (_) => user?.role == UserRole.admin
+              ? const AdminDashboardScreen()
+              : const SportSelectionScreen(),
+        ),
       );
     }
   }
@@ -394,35 +454,35 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
                   ],
 
                   if (!_isLogin) ...[
-                    // Chọn Vai trò theo SRS (Người chơi / Chủ Shop)
+                    // Chọn Vai trò đăng ký (Người chơi / Chủ Shop)
                     const Text(
-                      'Vai trò đăng ký (Theo SRS mục 2.4):',
+                      'Chọn loại tài khoản đăng ký:',
                       style: TextStyle(
                         color: AppTheme.textSecondary,
-                        fontSize: 12,
+                        fontSize: 13,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 10),
                     Row(
                       children: [
                         Expanded(
                           child: _RoleOptionCard(
                             icon: Icons.sports_tennis_rounded,
                             title: 'Người chơi',
-                            subtitle: 'Quản lý vợt & đặt đan',
+                            subtitle: 'Quản lý Gara vợt',
                             isSelected: _selectedRole == UserRole.player,
                             onTap: () => setState(
                               () => _selectedRole = UserRole.player,
                             ),
                           ),
                         ),
-                        const SizedBox(width: 10),
+                        const SizedBox(width: 12),
                         Expanded(
                           child: _RoleOptionCard(
                             icon: Icons.storefront_rounded,
                             title: 'Chủ Shop',
-                            subtitle: 'Dịch vụ đan & phụ kiện',
+                            subtitle: 'Tiệm đan & Phụ kiện',
                             isSelected: _selectedRole == UserRole.stringer,
                             onTap: () => setState(
                               () => _selectedRole = UserRole.stringer,
@@ -431,7 +491,7 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 18),
 
                     // Tên người chơi / Chủ shop
                     TextFormField(
@@ -456,7 +516,7 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
                       controller: _phoneController,
                       keyboardType: TextInputType.phone,
                       decoration: const InputDecoration(
-                        labelText: 'Số điện thoại',
+                        labelText: 'Số điện thoại liên hệ',
                         prefixIcon: Icon(
                           Icons.phone_outlined,
                           color: AppTheme.primary,
@@ -475,7 +535,7 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
                     const SizedBox(height: 14),
 
                     // Trường bổ sung theo Role
-                    if (_selectedRole == UserRole.player)
+                    if (_selectedRole == UserRole.player) ...[
                       TextFormField(
                         controller: _playStyleController,
                         decoration: const InputDecoration(
@@ -485,22 +545,152 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
                             color: AppTheme.primary,
                           ),
                         ),
-                      )
-                    else
-                      TextFormField(
-                        controller: _shopNameController,
-                        decoration: const InputDecoration(
-                          labelText: 'Tên cửa hàng cầu lông',
-                          prefixIcon: Icon(
-                            Icons.store_mall_directory_outlined,
-                            color: AppTheme.primary,
+                      ),
+                      const SizedBox(height: 14),
+                    ] else if (_selectedRole == UserRole.stringer) ...[
+                      Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: AppTheme.surface,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: AppTheme.primary.withOpacity(0.45),
                           ),
                         ),
-                        validator: (v) => (v == null || v.trim().isEmpty)
-                            ? 'Vui lòng nhập tên cửa hàng'
-                            : null,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Row(
+                              children: [
+                                Icon(
+                                  Icons.storefront_rounded,
+                                  color: AppTheme.primary,
+                                  size: 18,
+                                ),
+                                SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Thông Tin Đăng Ký Cửa Hàng Cầu Lông (Chờ Admin Duyệt)',
+                                    style: TextStyle(
+                                      color: AppTheme.primary,
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            TextFormField(
+                              controller: _shopNameController,
+                              decoration: const InputDecoration(
+                                labelText: 'Tên cửa hàng cầu lông *',
+                                prefixIcon: Icon(
+                                  Icons.store_mall_directory_outlined,
+                                  color: AppTheme.primary,
+                                ),
+                              ),
+                              validator: (v) => (v == null || v.trim().isEmpty)
+                                  ? 'Vui lòng nhập tên cửa hàng'
+                                  : null,
+                            ),
+                            const SizedBox(height: 12),
+                            TextFormField(
+                              controller: _shopAddressController,
+                              decoration: const InputDecoration(
+                                labelText: 'Địa chỉ chi tiết (Số nhà, đường) *',
+                                prefixIcon: Icon(
+                                  Icons.place_outlined,
+                                  color: AppTheme.primary,
+                                ),
+                              ),
+                              validator: (v) => (v == null || v.trim().isEmpty)
+                                  ? 'Vui lòng nhập địa chỉ cửa hàng'
+                                  : null,
+                            ),
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: TextFormField(
+                                    controller: _shopDistrictController,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Quận / Huyện *',
+                                    ),
+                                    validator: (v) =>
+                                        (v == null || v.trim().isEmpty)
+                                            ? 'Nhập Quận/Huyện'
+                                            : null,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: TextFormField(
+                                    controller: _shopCityController,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Tỉnh / Thành phố *',
+                                    ),
+                                    validator: (v) =>
+                                        (v == null || v.trim().isEmpty)
+                                            ? 'Nhập Tỉnh/TP'
+                                            : null,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            TextFormField(
+                              controller: _shopMachineController,
+                              decoration: const InputDecoration(
+                                labelText: 'Dòng máy đan cước sử dụng *',
+                                hintText:
+                                    'VD: Máy điện tử Yonex Precision 9.0',
+                                prefixIcon: Icon(
+                                  Icons.precision_manufacturing_rounded,
+                                  color: AppTheme.primary,
+                                ),
+                              ),
+                              validator: (v) => (v == null || v.trim().isEmpty)
+                                  ? 'Vui lòng nhập dòng máy đan cước'
+                                  : null,
+                            ),
+                            const SizedBox(height: 12),
+                            TextFormField(
+                              controller: _shopCertController,
+                              decoration: const InputDecoration(
+                                labelText:
+                                    'Chứng chỉ / Kinh nghiệm thợ đan *',
+                                hintText:
+                                    'VD: Thợ đan 4 nút chuẩn Yonex 5 năm KN',
+                                prefixIcon: Icon(
+                                  Icons.verified_outlined,
+                                  color: AppTheme.primary,
+                                ),
+                              ),
+                              validator: (v) => (v == null || v.trim().isEmpty)
+                                  ? 'Vui lòng nhập chứng chỉ/kinh nghiệm'
+                                  : null,
+                            ),
+                            const SizedBox(height: 12),
+                            TextFormField(
+                              controller: _shopOpenHoursController,
+                              decoration: const InputDecoration(
+                                labelText: 'Giờ mở cửa hoạt động *',
+                                hintText: 'VD: 08:00 - 21:30',
+                                prefixIcon: Icon(
+                                  Icons.access_time_rounded,
+                                  color: AppTheme.primary,
+                                ),
+                              ),
+                              validator: (v) => (v == null || v.trim().isEmpty)
+                                  ? 'Vui lòng nhập giờ mở cửa'
+                                  : null,
+                            ),
+                          ],
+                        ),
                       ),
-                    const SizedBox(height: 14),
+                      const SizedBox(height: 14),
+                    ],
                   ],
 
                   // Email
@@ -725,27 +915,38 @@ class _RoleOptionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.all(10),
+      borderRadius: BorderRadius.circular(14),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
         decoration: BoxDecoration(
           color: isSelected
-              ? AppTheme.primary.withOpacity(0.15)
+              ? AppTheme.primary.withOpacity(0.14)
               : AppTheme.surface,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(14),
           border: Border.all(
             color: isSelected ? AppTheme.primary : AppTheme.border,
-            width: isSelected ? 1.5 : 1.0,
+            width: isSelected ? 1.8 : 1.0,
           ),
         ),
         child: Row(
           children: [
-            Icon(
-              icon,
-              color: isSelected ? AppTheme.primary : AppTheme.textMuted,
-              size: 22,
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: isSelected
+                    ? AppTheme.primary
+                    : AppTheme.border.withOpacity(0.5),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                icon,
+                color: isSelected ? Colors.black : AppTheme.textSecondary,
+                size: 20,
+              ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 10),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -757,14 +958,15 @@ class _RoleOptionCard extends StatelessWidget {
                           ? AppTheme.primary
                           : AppTheme.textPrimary,
                       fontWeight: FontWeight.bold,
-                      fontSize: 13,
+                      fontSize: 14,
                     ),
                   ),
+                  const SizedBox(height: 2),
                   Text(
                     subtitle,
                     style: const TextStyle(
-                      color: AppTheme.textMuted,
-                      fontSize: 10,
+                      color: AppTheme.textSecondary,
+                      fontSize: 11,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
