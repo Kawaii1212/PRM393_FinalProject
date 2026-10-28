@@ -14,6 +14,10 @@ class Shop {
   final String openHours;
   final String imageUrl;
   final double distanceKm;
+  final String? ownerUid;
+  final String? ownerName;
+  final String? ownerEmail;
+  final String status; // 'pending' | 'approved' | 'disabled'
 
   Shop({
     required this.id,
@@ -31,7 +35,27 @@ class Shop {
     required this.openHours,
     required this.imageUrl,
     this.distanceKm = 1.2,
+    this.ownerUid,
+    this.ownerName,
+    this.ownerEmail,
+    this.status = 'approved',
   });
+
+  bool get isPending => status == 'pending';
+  bool get isApproved => status == 'approved';
+  bool get isDisabled => status == 'disabled';
+
+  String get statusDisplayName {
+    switch (status) {
+      case 'pending':
+        return 'Chờ phê duyệt';
+      case 'disabled':
+        return 'Đã vô hiệu hóa';
+      case 'approved':
+      default:
+        return 'Đang hoạt động';
+    }
+  }
 
   Shop copyWith({
     String? id,
@@ -49,6 +73,10 @@ class Shop {
     String? openHours,
     String? imageUrl,
     double? distanceKm,
+    String? ownerUid,
+    String? ownerName,
+    String? ownerEmail,
+    String? status,
   }) {
     return Shop(
       id: id ?? this.id,
@@ -66,6 +94,10 @@ class Shop {
       openHours: openHours ?? this.openHours,
       imageUrl: imageUrl ?? this.imageUrl,
       distanceKm: distanceKm ?? this.distanceKm,
+      ownerUid: ownerUid ?? this.ownerUid,
+      ownerName: ownerName ?? this.ownerName,
+      ownerEmail: ownerEmail ?? this.ownerEmail,
+      status: status ?? this.status,
     );
   }
 
@@ -86,27 +118,36 @@ class Shop {
       'openHours': openHours,
       'imageUrl': imageUrl,
       'distanceKm': distanceKm,
+      'ownerUid': ownerUid,
+      'ownerName': ownerName,
+      'ownerEmail': ownerEmail,
+      'status': status,
     };
   }
 
   factory Shop.fromMap(Map<String, dynamic> map, {String? docId}) {
     return Shop(
-      id: docId ?? map['id']?.toString() ?? '',
-      name: map['name']?.toString() ?? '',
+      id: map['id']?.toString() ?? docId ?? '',
+      name: map['name']?.toString() ?? 'Cửa hàng cầu lông',
       address: map['address']?.toString() ?? '',
-      district: map['district']?.toString() ?? '',
-      city: map['city']?.toString() ?? 'TP. Hồ Chí Minh',
-      latitude: (map['latitude'] as num?)?.toDouble() ?? 0.0,
-      longitude: (map['longitude'] as num?)?.toDouble() ?? 0.0,
-      rating: (map['rating'] as num?)?.toDouble() ?? 4.8,
-      reviewCount: (map['reviewCount'] as num?)?.toInt() ?? 50,
-      machineModel: map['machineModel']?.toString() ?? 'Máy điện tử Yonex Precision 9.0 Pro',
-      stringerCert: map['stringerCert']?.toString() ?? 'Kỹ thuật viên đan 4 nút chứng nhận Yonex / BWF',
-      phone: map['phone']?.toString() ?? '+84 908 123 456',
-      openHours: map['openHours']?.toString() ?? '08:00 - 21:30 (Cả tuần)',
+      district: map['district']?.toString() ?? 'Khu vực lân cận',
+      city: map['city']?.toString() ?? 'Việt Nam',
+      latitude: (map['latitude'] as num?)?.toDouble() ?? 21.0285,
+      longitude: (map['longitude'] as num?)?.toDouble() ?? 105.8542,
+      rating: (map['rating'] as num?)?.toDouble() ?? 5.0,
+      reviewCount: (map['reviewCount'] as num?)?.toInt() ?? 0,
+      machineModel:
+          map['machineModel']?.toString() ?? 'Máy đan cước điện tử',
+      stringerCert:
+          map['stringerCert']?.toString() ?? 'Kỹ thuật viên đan vợt',
+      phone: map['phone']?.toString() ?? '',
+      openHours: map['openHours']?.toString() ?? '08:00 - 21:30',
       imageUrl: map['imageUrl']?.toString() ?? '',
       distanceKm: (map['distanceKm'] as num?)?.toDouble() ?? 1.0,
+      ownerUid: map['ownerUid']?.toString(),
+      ownerName: map['ownerName']?.toString(),
+      ownerEmail: map['ownerEmail']?.toString(),
+      status: map['status']?.toString() ?? 'approved',
     );
   }
 }
-

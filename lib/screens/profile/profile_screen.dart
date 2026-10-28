@@ -5,6 +5,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/racket_provider.dart';
 import '../../theme/app_theme.dart';
 import '../auth/login_register_screen.dart';
+import '../shop_owner/shop_owner_manage_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -311,32 +312,53 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               const SizedBox(height: 16),
 
-              // Quick Stats Row
-              Row(
-                children: [
-                  Expanded(
-                    child: _StatTile(
-                      label: 'Vợt sở hữu',
-                      value: '${racketProvider.allRackets.length} cây',
-                      icon: Icons.sports_tennis_rounded,
-                      color: AppTheme.primary,
-                    ),
+              if (user.role == UserRole.stringer) ...[
+                ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const ShopOwnerManageScreen(),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.storefront_rounded),
+                  label: const Text('Quản Lý Dịch Vụ & Vật Phẩm Cửa Hàng'),
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _StatTile(
-                      label: 'Cần đan lại',
-                      value:
-                          '${racketProvider.racketsNeedingRestring.length} cây',
-                      icon: Icons.warning_amber_rounded,
-                      color: racketProvider.racketsNeedingRestring.isNotEmpty
-                          ? AppTheme.danger
-                          : AppTheme.primary,
+                ),
+                const SizedBox(height: 16),
+              ],
+
+              // Quick Stats Row (Chỉ hiển thị cho Người chơi & Chủ Shop)
+              if (user.role != UserRole.admin) ...[
+                Row(
+                  children: [
+                    Expanded(
+                      child: _StatTile(
+                        label: 'Vợt sở hữu',
+                        value: '${racketProvider.allRackets.length} cây',
+                        icon: Icons.sports_tennis_rounded,
+                        color: AppTheme.primary,
+                      ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _StatTile(
+                        label: 'Cần đan lại',
+                        value:
+                            '${racketProvider.racketsNeedingRestring.length} cây',
+                        icon: Icons.warning_amber_rounded,
+                        color: racketProvider.racketsNeedingRestring.isNotEmpty
+                            ? AppTheme.danger
+                            : AppTheme.primary,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+              ],
 
               // Form Thông tin cá nhân
               const Text(
@@ -420,19 +442,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ? 'Không được để trống SĐT'
                     : null,
               ),
-              const SizedBox(height: 14),
-
-              TextFormField(
-                controller: _playStyleController,
-                enabled: _isEditing,
-                decoration: const InputDecoration(
-                  labelText: 'Lối chơi sở trường',
-                  prefixIcon: Icon(
-                    Icons.bolt_rounded,
-                    color: AppTheme.primary,
+              if (user.role == UserRole.player) ...[
+                const SizedBox(height: 14),
+                TextFormField(
+                  controller: _playStyleController,
+                  enabled: _isEditing,
+                  decoration: const InputDecoration(
+                    labelText: 'Lối chơi sở trường',
+                    prefixIcon: Icon(
+                      Icons.bolt_rounded,
+                      color: AppTheme.primary,
+                    ),
                   ),
                 ),
-              ),
+              ],
 
               if (user.role == UserRole.stringer) ...[
                 const SizedBox(height: 14),
