@@ -75,6 +75,37 @@ class ChatProvider with ChangeNotifier {
     }
   }
 
+  List<ChatThread> getThreadsForShop(String shopId) {
+    return _threads.where((t) => t.shopId == shopId).toList();
+  }
+
+  void sendMessageAsShop(String threadId, String text) {
+    final index = _threads.indexWhere((t) => t.id == threadId);
+    if (index != -1) {
+      final thread = _threads[index];
+      final newMsg = ChatMessage(
+        id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
+        senderId: thread.shopId,
+        text: text,
+        timestamp: DateTime.now(),
+        isFromUser: false,
+      );
+
+      final updatedMessages = List<ChatMessage>.from(thread.messages)..add(newMsg);
+      _threads[index] = ChatThread(
+        id: thread.id,
+        shopId: thread.shopId,
+        shopName: thread.shopName,
+        shopAvatar: thread.shopAvatar,
+        lastMessage: text,
+        lastMessageTime: DateTime.now(),
+        unreadCount: 0,
+        messages: updatedMessages,
+      );
+      notifyListeners();
+    }
+  }
+
   void markThreadAsRead(String threadId) {
     final index = _threads.indexWhere((t) => t.id == threadId);
     if (index != -1 && _threads[index].unreadCount > 0) {
@@ -88,6 +119,30 @@ class ChatProvider with ChangeNotifier {
         lastMessageTime: thread.lastMessageTime,
         unreadCount: 0,
         messages: thread.messages,
+      );
+      notifyListeners();
+    }
+  }
+
+  void deleteThread(String threadId) {
+    _threads.removeWhere((t) => t.id == threadId);
+    notifyListeners();
+  }
+
+  void deleteMessage(String threadId, String messageId) {
+    final index = _threads.indexWhere((t) => t.id == threadId);
+    if (index != -1) {
+      final thread = _threads[index];
+      final updatedMessages = thread.messages.where((m) => m.id != messageId).toList();
+      _threads[index] = ChatThread(
+        id: thread.id,
+        shopId: thread.shopId,
+        shopName: thread.shopName,
+        shopAvatar: thread.shopAvatar,
+        lastMessage: updatedMessages.isNotEmpty ? updatedMessages.last.text : 'Đoạn chat trống',
+        lastMessageTime: updatedMessages.isNotEmpty ? updatedMessages.last.timestamp : thread.lastMessageTime,
+        unreadCount: thread.unreadCount,
+        messages: updatedMessages,
       );
       notifyListeners();
     }

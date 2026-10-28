@@ -1,14 +1,13 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../models/product_model.dart';
-import '../../models/racket_model.dart';
+import '../../models/shop_model.dart';
 import '../../providers/shop_provider.dart';
-import '../../providers/cart_provider.dart';
-import '../../providers/racket_provider.dart';
 import '../../providers/chat_provider.dart';
 import '../../theme/app_theme.dart';
-import '../cart/cart_screen.dart';
 import '../chat/chat_screen.dart';
 
 class ShopDetailScreen extends StatefulWidget {
@@ -20,7 +19,8 @@ class ShopDetailScreen extends StatefulWidget {
   State<ShopDetailScreen> createState() => _ShopDetailScreenState();
 }
 
-class _ShopDetailScreenState extends State<ShopDetailScreen> with SingleTickerProviderStateMixin {
+class _ShopDetailScreenState extends State<ShopDetailScreen>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final _currencyFormat = NumberFormat.currency(locale: 'vi_VN', symbol: 'đ');
 
@@ -36,249 +36,95 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> with SingleTickerPr
     super.dispose();
   }
 
-  void _showBookServiceModal(BuildContext context, Product service) {
-    final racketProvider = context.read<RacketProvider>();
-    final userRackets = racketProvider.allRackets;
+  void _openChatWithInquiry(Shop shop, Product item) {
+    final chatProvider = context.read<ChatProvider>();
+    final thread = chatProvider.getOrCreateThreadForShop(
+      shop.id,
+      shop.name,
+      shop.imageUrl,
+    );
 
-    Racket? selectedRacket = userRackets.isNotEmpty ? userRackets.first : null;
-    double requestedTension = selectedRacket != null ? selectedRacket.initialTensionLbs : 25.5;
-    if (requestedTension <= 0) requestedTension = 25.0;
-    String selectedTechnique = '4 nút chuẩn Yonex';
-    final notesController = TextEditingController();
+    // Gửi tự động tin nhắn hỏi về sản phẩm trưng bày
+    chatProvider.sendMessage(
+      thread.id,
+      'Chào shop, em đang quan tâm đến "${item.name}" (giá ${_currencyFormat.format(item.price)}). Shop tư vấn thêm giúp em nhé!',
+    );
 
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: AppTheme.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatConversationScreen(threadId: thread.id),
       ),
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (context, setSheetState) {
-            final paddingBottom = MediaQuery.of(context).viewInsets.bottom;
-            final isExceeded = selectedRacket != null && selectedRacket!.isTensionExceeded(requestedTension);
+    );
+  }
 
-            return Padding(
-              padding: EdgeInsets.fromLTRB(20, 20, 20, paddingBottom + 20),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: Text(
-                            service.name,
-                            style: const TextStyle(
-                              color: AppTheme.textPrimary,
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.close, color: AppTheme.textMuted),
-                          onPressed: () => Navigator.pop(ctx),
-                        ),
-                      ],
-                    ),
-                    Text(
-                      'Giá dịch vụ: ${_currencyFormat.format(service.price)}',
-                      style: const TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 16),
+  Future<void> _openDirections(Shop shop) async {
+    final url = Uri.parse(
+      'https://www.google.com/maps/dir/?api=1&destination=${shop.latitude},${shop.longitude}&travelmode=driving',
+    );
+    try {
+      await launchUrl(url, mode: LaunchMode.externalApplication);
+    } catch (_) {}
+  }
 
-                    // Step 1: Chọn cây vợt từ Gara để đan
-                    const Text(
-                      '1. Chọn Cây Vợt Trong Gara Của Bạn Để Đan:',
-                      style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.w600, fontSize: 14),
-                    ),
-                    const SizedBox(height: 8),
-                    if (userRackets.isEmpty)
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: AppTheme.surfaceLight,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: const Text(
-                          'Bạn chưa có cây vợt nào trong Gara. Hãy thêm vợt trước để theo dõi vòng đời!',
-                          style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
-                        ),
-                      )
-                    else
-                      DropdownButtonFormField<Racket>(
-                        value: selectedRacket,
-                        decoration: const InputDecoration(contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 12)),
-                        items: userRackets.map((r) {
-                          return DropdownMenuItem<Racket>(
-                            value: r,
-                            child: Text(
-                              '${r.brand} ${r.modelName} (Max: ${r.maxTensionLbs.toInt()} lbs)',
-                              style: const TextStyle(fontSize: 13),
-                            ),
-                          );
-                        }).toList(),
-                        onChanged: (r) {
-                          setSheetState(() {
-                            selectedRacket = r;
-                          });
-                        },
-                      ),
-                    const SizedBox(height: 16),
+  Widget _buildProductThumbnail(String imageUrl, {bool isService = false, double size = 52}) {
+    if (imageUrl.trim().isEmpty) {
+      return Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          color: AppTheme.surfaceLight,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppTheme.border),
+        ),
+        child: Icon(
+          isService ? Icons.flash_on_rounded : Icons.sports_tennis_rounded,
+          color: AppTheme.primary,
+          size: 26,
+        ),
+      );
+    }
 
-                    // Step 2: Mức căng yêu cầu (lbs)
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          '2. Mức Căng Yêu Cầu (lbs):',
-                          style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.w600, fontSize: 14),
-                        ),
-                        Text(
-                          '$requestedTension lbs',
-                          style: TextStyle(
-                            color: isExceeded ? AppTheme.danger : AppTheme.primary,
-                            fontWeight: FontWeight.w900,
-                            fontSize: 16,
-                          ),
-                        ),
-                      ],
-                    ),
-                    Slider(
-                      value: requestedTension,
-                      min: 20.0,
-                      max: 33.0,
-                      divisions: 26,
-                      activeColor: isExceeded ? AppTheme.danger : AppTheme.primary,
-                      inactiveColor: AppTheme.surfaceLight,
-                      onChanged: (val) {
-                        setSheetState(() {
-                          requestedTension = double.parse(val.toStringAsFixed(1));
-                        });
-                      },
-                    ),
+    final trimmed = imageUrl.trim();
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Image.network(
+          trimmed,
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => Container(
+            width: size,
+            height: size,
+            color: AppTheme.surfaceLight,
+            child: const Icon(Icons.broken_image_rounded, color: AppTheme.textMuted, size: 22),
+          ),
+        ),
+      );
+    }
 
-                    if (isExceeded)
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        margin: const EdgeInsets.only(bottom: 12),
-                        decoration: BoxDecoration(
-                          color: AppTheme.danger.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: AppTheme.danger.withOpacity(0.5)),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.warning_amber_rounded, color: AppTheme.danger, size: 20),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                'Cảnh báo: Khung vợt ${selectedRacket?.modelName} chỉ chịu tối đa ${selectedRacket?.maxTensionLbs} lbs!',
-                                style: const TextStyle(color: AppTheme.danger, fontSize: 11, fontWeight: FontWeight.bold),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                    // Step 3: Kỹ thuật đan
-                    const Text(
-                      '3. Kỹ Thuật Đan:',
-                      style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.w600, fontSize: 14),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: ChoiceChip(
-                            label: const Text('4 Nút Yonex Chuẩn'),
-                            selected: selectedTechnique == '4 nút chuẩn Yonex',
-                            onSelected: (_) => setSheetState(() => selectedTechnique = '4 nút chuẩn Yonex'),
-                            selectedColor: AppTheme.primary,
-                            labelStyle: TextStyle(
-                              color: selectedTechnique == '4 nút chuẩn Yonex' ? Colors.black : AppTheme.textSecondary,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: ChoiceChip(
-                            label: const Text('2 Nút Li-Ning'),
-                            selected: selectedTechnique == '2 nút Li-Ning',
-                            onSelected: (_) => setSheetState(() => selectedTechnique = '2 nút Li-Ning'),
-                            selectedColor: AppTheme.primary,
-                            labelStyle: TextStyle(
-                              color: selectedTechnique == '2 nút Li-Ning' ? Colors.black : AppTheme.textSecondary,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
-
-                    // Ghi chú cho thợ
-                    TextField(
-                      controller: notesController,
-                      decoration: const InputDecoration(
-                        labelText: 'Ghi chú cho thợ đan (ví dụ: kéo chùng dây dọc 0.5 lbs)',
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-
-                    // Add to cart button
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: () {
-                          context.read<CartProvider>().addToCart(
-                            service,
-                            targetRacket: selectedRacket,
-                            requestedTensionLbs: requestedTension,
-                            stringingTechnique: selectedTechnique,
-                            specialNotes: notesController.text.trim(),
-                          );
-                          Navigator.pop(ctx);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Đã thêm ${service.name} vào Giỏ hàng!'),
-                              action: SnackBarAction(
-                                label: 'Xem Giỏ Hàng',
-                                textColor: AppTheme.primary,
-                                onPressed: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(builder: (_) => const CartScreen()),
-                                  );
-                                },
-                              ),
-                            ),
-                          );
-                        },
-                        child: const Text('Thêm Vào Giỏ Hàng'),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
+    final file = File(trimmed);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: Image.file(
+        file,
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => Container(
+          width: size,
+          height: size,
+          color: AppTheme.surfaceLight,
+          child: const Icon(Icons.image_not_supported_rounded, color: AppTheme.textMuted, size: 22),
+        ),
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     final shopProvider = context.watch<ShopProvider>();
-    final cartProvider = context.watch<CartProvider>();
     final shop = shopProvider.getShopById(widget.shopId) ??
         (shopProvider.shops.isNotEmpty ? shopProvider.shops.first : null);
 
@@ -298,34 +144,23 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> with SingleTickerPr
       appBar: AppBar(
         title: Text(shop.name),
         actions: [
-          Stack(
-            children: [
-              IconButton(
-                icon: const Icon(Icons.shopping_bag_outlined),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const CartScreen()),
-                  );
-                },
-              ),
-              if (cartProvider.itemCount > 0)
-                Positioned(
-                  right: 8,
-                  top: 8,
-                  child: Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: const BoxDecoration(
-                      color: AppTheme.danger,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Text(
-                      '${cartProvider.itemCount}',
-                      style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
-                    ),
-                  ),
+          IconButton(
+            tooltip: 'Nhắn tin với shop',
+            icon: const Icon(Icons.chat_bubble_outline_rounded, color: AppTheme.primary),
+            onPressed: () {
+              final chatProvider = context.read<ChatProvider>();
+              final thread = chatProvider.getOrCreateThreadForShop(
+                shop.id,
+                shop.name,
+                shop.imageUrl,
+              );
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ChatConversationScreen(threadId: thread.id),
                 ),
-            ],
+              );
+            },
           ),
         ],
       ),
@@ -339,6 +174,7 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> with SingleTickerPr
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // Header Shop
                     Row(
                       children: [
                         Container(
@@ -376,8 +212,12 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> with SingleTickerPr
                                   const SizedBox(width: 12),
                                   const Icon(Icons.location_on, color: AppTheme.primaryDark, size: 14),
                                   Text(
-                                    '${shop.distanceKm} km',
-                                    style: const TextStyle(color: AppTheme.primaryDark, fontSize: 12, fontWeight: FontWeight.bold),
+                                    'Cách ${shop.distanceKm} km',
+                                    style: const TextStyle(
+                                      color: AppTheme.primaryDark,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                    ),
                                   ),
                                 ],
                               ),
@@ -386,7 +226,34 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> with SingleTickerPr
                         ),
                       ],
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 12),
+
+                    // Địa chỉ & Giờ mở cửa
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(Icons.place_outlined, size: 15, color: AppTheme.primary),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            '${shop.address}, ${shop.district}, ${shop.city}',
+                            style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12.5),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        const Icon(Icons.schedule_rounded, size: 15, color: AppTheme.primary),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Giờ mở cửa: ${shop.openHours}',
+                          style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12.5),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
 
                     // Machine & Stringer info banner
                     Container(
@@ -427,31 +294,80 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> with SingleTickerPr
                     ),
                     const SizedBox(height: 12),
 
-                    // Chat with stringer button
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed: () {
-                          final chatProvider = context.read<ChatProvider>();
-                          final thread = chatProvider.getOrCreateThreadForShop(
-                            shop.id,
-                            shop.name,
-                            shop.imageUrl,
-                          );
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => ChatConversationScreen(threadId: thread.id),
-                            ),
-                          );
-                        },
-                        icon: const Icon(Icons.chat_bubble_outline_rounded, color: AppTheme.primary),
-                        label: const Text('Nhắn Tin Trực Tiếp Với Thợ Đan Cước'),
-                        style: OutlinedButton.styleFrom(
-                          side: const BorderSide(color: AppTheme.primary),
-                          foregroundColor: AppTheme.primary,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    // Cụm nút liên hệ: Nhắn tin + Gọi hotline + Chỉ đường
+                    Row(
+                      children: [
+                        Expanded(
+                          flex: 3,
+                          child: ElevatedButton.icon(
+                            onPressed: () {
+                              final chatProvider = context.read<ChatProvider>();
+                              final thread = chatProvider.getOrCreateThreadForShop(
+                                shop.id,
+                                shop.name,
+                                shop.imageUrl,
+                              );
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => ChatConversationScreen(threadId: thread.id),
+                                ),
+                              );
+                            },
+                            icon: const Icon(Icons.chat_bubble_rounded, size: 18),
+                            label: const Text('Nhắn Tin Tư Vấn', style: TextStyle(fontWeight: FontWeight.bold)),
+                          ),
                         ),
+                        const SizedBox(width: 8),
+                        if (shop.phone.isNotEmpty && shop.phone != 'Chưa cập nhật') ...[
+                          IconButton(
+                            tooltip: 'Gọi hotline',
+                            onPressed: () => launchUrl(Uri.parse('tel:${shop.phone}')),
+                            icon: const Icon(Icons.phone_rounded, color: AppTheme.primary),
+                            style: IconButton.styleFrom(
+                              backgroundColor: AppTheme.surfaceLight,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                side: const BorderSide(color: AppTheme.border),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                        ],
+                        IconButton(
+                          tooltip: 'Chỉ đường đến shop',
+                          onPressed: () => _openDirections(shop),
+                          icon: const Icon(Icons.directions_rounded, color: AppTheme.primaryDark),
+                          style: IconButton.styleFrom(
+                            backgroundColor: AppTheme.surfaceLight,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              side: const BorderSide(color: AppTheme.border),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+
+                    // Ghi chú hình thức trưng bày
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: AppTheme.surfaceLight,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Row(
+                        children: const [
+                          Icon(Icons.info_outline_rounded, size: 14, color: AppTheme.primary),
+                          SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              'Shop trưng bày sản phẩm & bảng giá. Vui lòng nhắn tin hoặc ghé shop để được phục vụ.',
+                              style: TextStyle(color: AppTheme.textMuted, fontSize: 11),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
@@ -468,7 +384,7 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> with SingleTickerPr
                   unselectedLabelColor: AppTheme.textMuted,
                   tabs: const [
                     Tab(icon: Icon(Icons.handyman_rounded), text: 'Dịch Vụ Đan Cước'),
-                    Tab(icon: Icon(Icons.sports_baseball_rounded), text: 'Cước & Phụ Kiện'),
+                    Tab(icon: Icon(Icons.sports_tennis_rounded), text: 'Vật Phẩm Trưng Bày'),
                   ],
                 ),
               ),
@@ -497,23 +413,16 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> with SingleTickerPr
                       final srv = services[idx];
                       return Container(
                         margin: const EdgeInsets.only(bottom: 12),
-                        padding: const EdgeInsets.all(16),
+                        padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
                           color: AppTheme.surface,
-                          borderRadius: BorderRadius.circular(14),
+                          borderRadius: BorderRadius.circular(16),
                           border: Border.all(color: AppTheme.border),
                         ),
                         child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Container(
-                              width: 48,
-                              height: 48,
-                              decoration: BoxDecoration(
-                                color: AppTheme.surfaceLight,
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: const Icon(Icons.flash_on_rounded, color: AppTheme.primary, size: 28),
-                            ),
+                            _buildProductThumbnail(srv.imageUrl, isService: true),
                             const SizedBox(width: 14),
                             Expanded(
                               child: Column(
@@ -527,7 +436,7 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> with SingleTickerPr
                                       fontSize: 15,
                                     ),
                                   ),
-                                  const SizedBox(height: 4),
+                                  const SizedBox(height: 3),
                                   Text(
                                     srv.description,
                                     style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
@@ -538,19 +447,20 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> with SingleTickerPr
                                     style: const TextStyle(
                                       color: AppTheme.primary,
                                       fontWeight: FontWeight.w900,
-                                      fontSize: 16,
+                                      fontSize: 15,
                                     ),
                                   ),
                                 ],
                               ),
                             ),
-                            const SizedBox(width: 10),
+                            const SizedBox(width: 8),
                             ElevatedButton(
-                              onPressed: () => _showBookServiceModal(context, srv),
+                              onPressed: () => _openChatWithInquiry(shop, srv),
                               style: ElevatedButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                textStyle: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold),
                               ),
-                              child: const Text('Đặt Đan', style: TextStyle(fontWeight: FontWeight.bold)),
+                              child: const Text('Hỏi Shop 💬'),
                             ),
                           ],
                         ),
@@ -558,13 +468,13 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> with SingleTickerPr
                     },
                   ),
 
-            // Accessories list
+            // Accessories & Rackets list
             accessories.isEmpty
                 ? const Center(
                     child: Padding(
                       padding: EdgeInsets.all(24),
                       child: Text(
-                        'Cửa hàng này hiện chưa cập nhật danh sách cước & phụ kiện.',
+                        'Cửa hàng này hiện chưa cập nhật danh sách vật phẩm trưng bày.',
                         textAlign: TextAlign.center,
                         style: TextStyle(color: AppTheme.textMuted),
                       ),
@@ -580,20 +490,13 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> with SingleTickerPr
                         padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
                           color: AppTheme.surface,
-                          borderRadius: BorderRadius.circular(14),
+                          borderRadius: BorderRadius.circular(16),
                           border: Border.all(color: AppTheme.border),
                         ),
                         child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Container(
-                              width: 50,
-                              height: 50,
-                              decoration: BoxDecoration(
-                                color: AppTheme.surfaceLight,
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: const Icon(Icons.sports_tennis_rounded, color: AppTheme.primaryDark, size: 28),
-                            ),
+                            _buildProductThumbnail(prod.imageUrl, isService: false),
                             const SizedBox(width: 14),
                             Expanded(
                               child: Column(
@@ -604,13 +507,18 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> with SingleTickerPr
                                     style: const TextStyle(
                                       color: AppTheme.textPrimary,
                                       fontWeight: FontWeight.bold,
-                                      fontSize: 14,
+                                      fontSize: 14.5,
                                     ),
                                   ),
-                                  const SizedBox(height: 3),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    prod.categoryName,
+                                    style: const TextStyle(color: AppTheme.primaryDark, fontSize: 11, fontWeight: FontWeight.bold),
+                                  ),
+                                  const SizedBox(height: 2),
                                   Text(
                                     prod.description,
-                                    style: const TextStyle(color: AppTheme.textMuted, fontSize: 11),
+                                    style: const TextStyle(color: AppTheme.textMuted, fontSize: 11.5),
                                     maxLines: 2,
                                     overflow: TextOverflow.ellipsis,
                                   ),
@@ -626,22 +534,14 @@ class _ShopDetailScreenState extends State<ShopDetailScreen> with SingleTickerPr
                                 ],
                               ),
                             ),
-                            const SizedBox(width: 10),
-                            IconButton(
-                              icon: const Icon(Icons.add_shopping_cart_rounded, color: AppTheme.primary),
-                              style: IconButton.styleFrom(
-                                backgroundColor: AppTheme.surfaceLight,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            const SizedBox(width: 8),
+                            ElevatedButton(
+                              onPressed: () => _openChatWithInquiry(shop, prod),
+                              style: ElevatedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                textStyle: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold),
                               ),
-                              onPressed: () {
-                                context.read<CartProvider>().addToCart(prod);
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('Đã thêm ${prod.name} vào giỏ!'),
-                                    duration: const Duration(seconds: 1),
-                                  ),
-                                );
-                              },
+                              child: const Text('Hỏi Shop 💬'),
                             ),
                           ],
                         ),

@@ -10,6 +10,7 @@ import 'providers/shop_provider.dart';
 import 'providers/cart_provider.dart';
 import 'providers/chat_provider.dart';
 import 'providers/notification_provider.dart';
+import 'providers/order_provider.dart';
 import 'screens/auth/splash_screen.dart';
 
 Future<void> main() async {
@@ -45,6 +46,7 @@ class GearSportsApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => CartProvider()),
         ChangeNotifierProvider(create: (_) => ChatProvider()),
         ChangeNotifierProvider(create: (_) => NotificationProvider()),
+        ChangeNotifierProvider(create: (_) => OrderProvider()),
       ],
       child: MaterialApp(
         title: 'Gear Sports - Trợ Lý Cầu Lông & Đan Vợt',

@@ -4,7 +4,10 @@ import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/cart_provider.dart';
 import '../../providers/notification_provider.dart';
+import '../../providers/order_provider.dart';
+import '../../providers/shop_provider.dart';
 import '../../models/notification_model.dart';
+import '../../models/order_model.dart';
 import '../../theme/app_theme.dart';
 import '../main_navigation_screen.dart';
 
@@ -55,19 +58,86 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     final cart = context.read<CartProvider>();
     final orderTotal = cart.totalAmount;
     final orderId = 'GS-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
+    final authUser = context.read<AuthProvider>().currentUser;
 
-    // 1. Tạo Notification cập nhật trạng thái đơn (FR-06 & Luồng Sơ Đồ)
+    // Xác định Shop tiếp nhận đơn từ các món hàng trong giỏ
+    String targetShopId = '';
+    String targetShopName = 'Cửa hàng cầu lông';
+    for (final item in cart.items) {
+      if (item.product.shopId.isNotEmpty && item.product.shopId != 'all') {
+        targetShopId = item.product.shopId;
+        final name = item.product.shopName;
+        if (name != null && name.isNotEmpty) {
+          targetShopName = name;
+        }
+        break;
+      }
+    }
+    if (targetShopId.isEmpty) {
+      final shops = context.read<ShopProvider>().shops;
+      if (shops.isNotEmpty) {
+        targetShopId = shops.first.id;
+        targetShopName = shops.first.name;
+      }
+    }
+
+    final orderItems = cart.items.map((ci) => OrderItem(
+      productId: ci.product.id,
+      productName: ci.product.name,
+      price: ci.product.price,
+      quantity: ci.quantity,
+      isService: ci.product.isService,
+      targetRacketName: ci.targetRacket != null
+          ? '${ci.targetRacket!.brand} ${ci.targetRacket!.modelName}'
+          : null,
+      requestedTensionLbs: ci.requestedTensionLbs,
+      stringingTechnique: ci.stringingTechnique,
+      selectedColor: ci.selectedColor,
+      specialNotes: ci.specialNotes,
+    )).toList();
+
+    final deliveryLabel = _deliveryMethod == 0 ? 'Mang đến shop' : 'Giao nhận tận nơi';
+    final paymentLabel = _paymentMethod == 0
+        ? 'Chuyển khoản VietQR'
+        : (_paymentMethod == 1 ? 'Ví MoMo' : 'Tiền mặt khi lấy vợt');
+
+    final newOrder = OrderModel(
+      id: orderId,
+      shopId: targetShopId,
+      shopName: targetShopName,
+      customerId: authUser?.uid ?? 'guest',
+      customerName: _nameController.text.trim().isEmpty
+          ? (authUser?.fullName ?? 'Khách hàng')
+          : _nameController.text.trim(),
+      customerPhone: _phoneController.text.trim().isEmpty
+          ? (authUser?.phone ?? '')
+          : _phoneController.text.trim(),
+      deliveryMethod: deliveryLabel,
+      paymentMethod: paymentLabel,
+      timeSlot: _selectedTimeSlot,
+      deliveryAddress: _addressController.text.trim(),
+      note: _noteController.text.trim(),
+      totalAmount: orderTotal,
+      status: OrderStatus.pending,
+      createdAt: DateTime.now(),
+      items: orderItems,
+    );
+
+    // 1. Lưu Order vào OrderProvider (Cloud Firestore & Cache)
+    context.read<OrderProvider>().createOrder(newOrder);
+
+    // 2. Tạo Notification cập nhật trạng thái đơn (FR-06 & Luồng Sơ Đồ)
     context.read<NotificationProvider>().addNotification(
       title: '🏸 Đặt lịch đan cước thành công! (#$orderId)',
-      message: 'Đơn đặt lịch của bạn đã được ghi nhận với tổng tiền ${_currencyFormat.format(orderTotal)}. Khung giờ hẹn: $_selectedTimeSlot.',
+      message: 'Đơn đặt lịch của bạn tại $targetShopName đã được ghi nhận với tổng tiền ${_currencyFormat.format(orderTotal)}. Khung giờ hẹn: $_selectedTimeSlot.',
       type: NotificationType.orderStatus,
       targetOrderId: orderId,
     );
 
-    // 2. Clear Cart
+    // 3. Clear Cart
     cart.clearCart();
 
-    // 3. Hiển thị Dialog chúc mừng
+    // 4. Hiển thị Dialog chúc mừng
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -98,7 +168,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               ),
               const SizedBox(height: 8),
               Text(
-                'Mã đơn hàng: #$orderId\nThời gian hẹn: $_selectedTimeSlot\nTổng thanh toán: ${_currencyFormat.format(orderTotal)}',
+                'Mã đơn hàng: #$orderId\nTiệm: $targetShopName\nThời gian hẹn: $_selectedTimeSlot\nTổng thanh toán: ${_currencyFormat.format(orderTotal)}',
                 textAlign: TextAlign.center,
                 style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
               ),

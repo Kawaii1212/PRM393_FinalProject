@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
@@ -46,9 +46,21 @@ class ShopMapScreen extends StatefulWidget {
 }
 
 class _ShopMapScreenState extends State<ShopMapScreen> {
+  static const List<double> _radiusOptions = [1.0, 2.0, 5.0, 10.0, 20.0];
+
   final MapController _mapController = MapController();
-  double _currentZoom = 14.5;
+  double _currentZoom = 14.3;
+  // Mặc định ban đầu trong mục bản đồ là bán kính 2 km
+  double _selectedRadiusKm = 2.0;
   MapStyleMode _mapStyle = MapStyleMode.osmStandard;
+
+  double _zoomForRadius(double radiusKm) {
+    if (radiusKm <= 1.0) return 15.2;
+    if (radiusKm <= 2.0) return 14.3;
+    if (radiusKm <= 5.0) return 13.0;
+    if (radiusKm <= 10.0) return 12.0;
+    return 11.0;
+  }
 
   @override
   void initState() {
@@ -124,8 +136,15 @@ class _ShopMapScreenState extends State<ShopMapScreen> {
   @override
   Widget build(BuildContext context) {
     final shopProvider = context.watch<ShopProvider>();
-    final shops = shopProvider.shops;
-    final selectedShop = shopProvider.selectedShop;
+    // Lọc các cửa hàng cầu lông theo khoảng cách bán kính đã chọn (mặc định ban đầu là 2 km)
+    final shops = shopProvider.shops
+        .where((s) => s.distanceKm <= _selectedRadiusKm)
+        .toList();
+    final rawSelected = shopProvider.selectedShop;
+    final selectedShop = (rawSelected != null &&
+            rawSelected.distanceKm <= _selectedRadiusKm)
+        ? rawSelected
+        : null;
     final userLocation = shopProvider.userLocation;
 
     return Scaffold(
@@ -216,6 +235,20 @@ class _ShopMapScreenState extends State<ShopMapScreen> {
               TileLayer(
                 urlTemplate: _mapStyle.urlTemplate,
                 userAgentPackageName: 'com.example.finalproject',
+              ),
+
+              // Vòng tròn bán kính hiển thị các shop cầu lông quanh người dùng (mặc định 2 km)
+              CircleLayer(
+                circles: [
+                  CircleMarker(
+                    point: userLocation,
+                    radius: _selectedRadiusKm * 1000,
+                    useRadiusInMeter: true,
+                    color: AppTheme.primary.withOpacity(0.10),
+                    borderColor: AppTheme.primaryDark.withOpacity(0.55),
+                    borderStrokeWidth: 1.8,
+                  ),
+                ],
               ),
 
               // Chỉ vẽ đường nối khi người dùng đã click chọn một cửa hàng trên bản đồ
@@ -380,143 +413,278 @@ class _ShopMapScreenState extends State<ShopMapScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Thanh hiển thị vị trí hiện tại của người dùng
+                // Thanh hiển thị vị trí hiện tại của người dùng + Chọn khoảng cách bán kính hiển thị
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 12,
                     vertical: 8,
                   ),
                   decoration: BoxDecoration(
-                    color: AppTheme.surface.withOpacity(0.94),
-                    borderRadius: BorderRadius.circular(12),
+                    color: AppTheme.surface.withOpacity(0.95),
+                    borderRadius: BorderRadius.circular(14),
                     border: Border.all(color: AppTheme.border),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.my_location_rounded,
-                        color: AppTheme.accent,
-                        size: 16,
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Colors.black26,
+                        blurRadius: 6,
+                        offset: Offset(0, 2),
                       ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Vị trí của bạn: ${shopProvider.userAreaLabel}',
-                          style: const TextStyle(
-                            color: AppTheme.textPrimary,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.my_location_rounded,
+                            color: AppTheme.accent,
+                            size: 16,
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Vị trí của bạn: ${shopProvider.userAreaLabel}',
+                              style: const TextStyle(
+                                color: AppTheme.textPrimary,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 7,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppTheme.primary.withOpacity(0.15),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              '${shops.length} shop',
+                              style: const TextStyle(
+                                color: AppTheme.primaryDark,
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.radar_rounded,
+                            color: AppTheme.primaryDark,
+                            size: 15,
+                          ),
+                          const SizedBox(width: 6),
+                          const Text(
+                            'Bán kính:',
+                            style: TextStyle(
+                              color: AppTheme.textSecondary,
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              child: Row(
+                                children: _radiusOptions.map((r) {
+                                  final isSelectedRadius =
+                                      _selectedRadiusKm == r;
+                                  return Padding(
+                                    padding: const EdgeInsets.only(right: 6),
+                                    child: InkWell(
+                                      borderRadius: BorderRadius.circular(10),
+                                      onTap: () {
+                                        setState(() {
+                                          _selectedRadiusKm = r;
+                                          _currentZoom = _zoomForRadius(r);
+                                        });
+                                        if (shopProvider.selectedShop != null &&
+                                            shopProvider
+                                                    .selectedShop!.distanceKm >
+                                                r) {
+                                          shopProvider.clearSelection();
+                                        }
+                                        _mapController.move(
+                                          userLocation,
+                                          _currentZoom,
+                                        );
+                                      },
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 4,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: isSelectedRadius
+                                              ? AppTheme.primary
+                                              : AppTheme.surfaceLight,
+                                          borderRadius:
+                                              BorderRadius.circular(10),
+                                          border: Border.all(
+                                            color: isSelectedRadius
+                                                ? AppTheme.primaryDark
+                                                : AppTheme.border,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          '${r.toInt()} km',
+                                          style: TextStyle(
+                                            color: isSelectedRadius
+                                                ? Colors.black
+                                                : AppTheme.textSecondary,
+                                            fontSize: 11.5,
+                                            fontWeight: isSelectedRadius
+                                                ? FontWeight.bold
+                                                : FontWeight.w500,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                }).toList(),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
                 ),
                 const SizedBox(height: 8),
 
-                // Các thẻ gợi ý cửa hàng kèm vị trí & khoảng cách
-                SizedBox(
-                  height: 54,
-                  child: ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: shops.length,
-                    separatorBuilder: (_, _) => const SizedBox(width: 8),
-                    itemBuilder: (ctx, i) {
-                      final shop = shops[i];
-                      final isSelected = selectedShop?.id == shop.id;
-                      return InkWell(
-                        onTap: () => _onShopTapped(shop),
-                        borderRadius: BorderRadius.circular(14),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            color: isSelected
-                                ? AppTheme.primary
-                                : AppTheme.surface.withOpacity(0.94),
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
+                // Các thẻ gợi ý cửa hàng kèm vị trí & khoảng cách trong bán kính đã chọn
+                if (shops.isEmpty)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppTheme.surface.withOpacity(0.94),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppTheme.border),
+                    ),
+                    child: Text(
+                      'Chưa có cửa hàng nào trong bán kính ${_selectedRadiusKm.toInt()} km. Bạn có thể chọn bán kính lớn hơn ở trên.',
+                      style: const TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: 11.5,
+                      ),
+                    ),
+                  )
+                else
+                  SizedBox(
+                    height: 54,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: shops.length,
+                      separatorBuilder: (_, _) => const SizedBox(width: 8),
+                      itemBuilder: (ctx, i) {
+                        final shop = shops[i];
+                        final isSelected = selectedShop?.id == shop.id;
+                        return InkWell(
+                          onTap: () => _onShopTapped(shop),
+                          borderRadius: BorderRadius.circular(14),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
                               color: isSelected
                                   ? AppTheme.primary
-                                  : AppTheme.border,
-                              width: isSelected ? 1.5 : 1.0,
-                            ),
-                            boxShadow: const [
-                              BoxShadow(
-                                color: Colors.black38,
-                                blurRadius: 6,
-                                offset: Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.storefront_rounded,
-                                size: 18,
+                                  : AppTheme.surface.withOpacity(0.94),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
                                 color: isSelected
-                                    ? Colors.black
-                                    : AppTheme.primary,
+                                    ? AppTheme.primary
+                                    : AppTheme.border,
+                                width: isSelected ? 1.5 : 1.0,
                               ),
-                              const SizedBox(width: 8),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Text(
-                                    '${shop.name.split('-').first.trim()} • ${shop.distanceKm} km',
-                                    style: TextStyle(
-                                      color: isSelected
-                                          ? Colors.black
-                                          : AppTheme.textPrimary,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        Icons.place_outlined,
-                                        size: 11,
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Colors.black38,
+                                  blurRadius: 6,
+                                  offset: Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.storefront_rounded,
+                                  size: 18,
+                                  color: isSelected
+                                      ? Colors.black
+                                      : AppTheme.primary,
+                                ),
+                                const SizedBox(width: 8),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Text(
+                                      '${shop.name.split('-').first.trim()} • ${shop.distanceKm} km',
+                                      style: TextStyle(
                                         color: isSelected
-                                            ? Colors.black87
-                                            : AppTheme.textSecondary,
+                                            ? Colors.black
+                                            : AppTheme.textPrimary,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
                                       ),
-                                      const SizedBox(width: 2),
-                                      ConstrainedBox(
-                                        constraints: const BoxConstraints(
-                                          maxWidth: 170,
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.place_outlined,
+                                          size: 11,
+                                          color: isSelected
+                                              ? Colors.black87
+                                              : AppTheme.textSecondary,
                                         ),
-                                        child: Text(
-                                          shop.address,
-                                          style: TextStyle(
-                                            color: isSelected
-                                                ? Colors.black87
-                                                : AppTheme.textSecondary,
-                                            fontSize: 10.5,
+                                        const SizedBox(width: 2),
+                                        ConstrainedBox(
+                                          constraints: const BoxConstraints(
+                                            maxWidth: 170,
                                           ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
+                                          child: Text(
+                                            shop.address,
+                                            style: TextStyle(
+                                              color: isSelected
+                                                  ? Colors.black87
+                                                  : AppTheme.textSecondary,
+                                              fontSize: 10.5,
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
                                         ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ],
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                      );
-                    },
+                        );
+                      },
+                    ),
                   ),
-                ),
               ],
             ),
           ),
@@ -524,7 +692,7 @@ class _ShopMapScreenState extends State<ShopMapScreen> {
           // 3. Cụm nút Zoom (+/-) bên phải bản đồ
           Positioned(
             right: 14,
-            top: 120,
+            top: 158,
             child: Column(
               children: [
                 _MapControlBtn(

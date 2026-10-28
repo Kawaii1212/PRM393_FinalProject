@@ -5,7 +5,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/racket_provider.dart';
 import '../../theme/app_theme.dart';
 import '../auth/login_register_screen.dart';
-import '../shop_owner/shop_owner_manage_screen.dart';
+import '../shop_owner/shop_owner_dashboard_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -318,12 +318,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => const ShopOwnerManageScreen(),
+                        builder: (_) => const ShopOwnerDashboardScreen(),
                       ),
                     );
                   },
                   icon: const Icon(Icons.storefront_rounded),
-                  label: const Text('Quản Lý Dịch Vụ & Vật Phẩm Cửa Hàng'),
+                  label: const Text('Kênh Quản Trị Cửa Hàng (Chủ Shop)'),
                   style: ElevatedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 14),
                   ),

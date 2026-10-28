@@ -1,4 +1,4 @@
-class TensionLog {
+﻿class TensionLog {
   final String id;
   final String racketId;
   final String stringModel;

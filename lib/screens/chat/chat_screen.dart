@@ -49,7 +49,9 @@ class ChatListScreen extends StatelessWidget {
                       color: AppTheme.surface,
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(
-                        color: thread.unreadCount > 0 ? AppTheme.primary.withOpacity(0.4) : AppTheme.border,
+                        color: thread.unreadCount > 0
+                            ? AppTheme.primary.withOpacity(0.4)
+                            : AppTheme.border,
                       ),
                     ),
                     child: Row(
@@ -62,7 +64,11 @@ class ChatListScreen extends StatelessWidget {
                             shape: BoxShape.circle,
                             border: Border.all(color: AppTheme.primaryDark),
                           ),
-                          child: const Icon(Icons.storefront_rounded, color: AppTheme.primaryDark, size: 26),
+                          child: const Icon(
+                            Icons.storefront_rounded,
+                            color: AppTheme.primaryDark,
+                            size: 26,
+                          ),
                         ),
                         const SizedBox(width: 14),
                         Expanded(
@@ -77,7 +83,9 @@ class ChatListScreen extends StatelessWidget {
                                       thread.shopName,
                                       style: TextStyle(
                                         color: AppTheme.textPrimary,
-                                        fontWeight: thread.unreadCount > 0 ? FontWeight.bold : FontWeight.w600,
+                                        fontWeight: thread.unreadCount > 0
+                                            ? FontWeight.bold
+                                            : FontWeight.w600,
                                         fontSize: 15,
                                       ),
                                       maxLines: 1,
@@ -86,7 +94,10 @@ class ChatListScreen extends StatelessWidget {
                                   ),
                                   Text(
                                     timeFormat.format(thread.lastMessageTime),
-                                    style: const TextStyle(color: AppTheme.textMuted, fontSize: 11),
+                                    style: const TextStyle(
+                                      color: AppTheme.textMuted,
+                                      fontSize: 11,
+                                    ),
                                   ),
                                 ],
                               ),
@@ -94,9 +105,13 @@ class ChatListScreen extends StatelessWidget {
                               Text(
                                 thread.lastMessage,
                                 style: TextStyle(
-                                  color: thread.unreadCount > 0 ? AppTheme.primary : AppTheme.textSecondary,
+                                  color: thread.unreadCount > 0
+                                      ? AppTheme.primary
+                                      : AppTheme.textSecondary,
                                   fontSize: 13,
-                                  fontWeight: thread.unreadCount > 0 ? FontWeight.w600 : FontWeight.normal,
+                                  fontWeight: thread.unreadCount > 0
+                                      ? FontWeight.w600
+                                      : FontWeight.normal,
                                 ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
@@ -114,7 +129,11 @@ class ChatListScreen extends StatelessWidget {
                             ),
                             child: Text(
                               '${thread.unreadCount}',
-                              style: const TextStyle(color: Colors.black, fontSize: 10, fontWeight: FontWeight.bold),
+                              style: const TextStyle(
+                                color: Colors.black,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ),
                         ],
@@ -130,8 +149,13 @@ class ChatListScreen extends StatelessWidget {
 
 class ChatConversationScreen extends StatefulWidget {
   final String threadId;
+  final bool isShopOwner;
 
-  const ChatConversationScreen({super.key, required this.threadId});
+  const ChatConversationScreen({
+    super.key,
+    required this.threadId,
+    this.isShopOwner = false,
+  });
 
   @override
   State<ChatConversationScreen> createState() => _ChatConversationScreenState();
@@ -142,11 +166,18 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
   final ScrollController _scrollController = ScrollController();
   final _timeFormat = DateFormat('HH:mm');
 
-  final List<String> _quickReplies = [
-    'Vợt thân cứng nên đan Exbolt 65 hay BG66UM?',
-    'Shop có nhận đan lấy liền trong 20 phút không?',
-    'Em muốn căng 4 nút kẹp đôi chuẩn Yonex ạ.',
-  ];
+  List<String> get _quickReplies => widget.isShopOwner
+      ? [
+          'Vợt của bạn đã đan xong rồi nhé! Bạn có thể ghé shop lấy.',
+          'Shop đang tiến hành đan cước cho bạn ạ.',
+          'Dạ shop còn cước BG66 Ultimax và Exbolt 65 ạ.',
+          'Bạn cần đặt lịch vào khung giờ nào ạ?',
+        ]
+      : [
+          'Vợt thân cứng nên đan Exbolt 65 hay BG66UM?',
+          'Shop có nhận đan lấy liền trong 20 phút không?',
+          'Em muốn căng 4 nút kẹp đôi chuẩn Yonex ạ.',
+        ];
 
   @override
   void dispose() {
@@ -159,7 +190,11 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
     final text = quickText ?? _msgController.text.trim();
     if (text.isEmpty) return;
 
-    context.read<ChatProvider>().sendMessage(widget.threadId, text);
+    if (widget.isShopOwner) {
+      context.read<ChatProvider>().sendMessageAsShop(widget.threadId, text);
+    } else {
+      context.read<ChatProvider>().sendMessage(widget.threadId, text);
+    }
     if (quickText == null) _msgController.clear();
 
     Future.delayed(const Duration(milliseconds: 100), () {
@@ -191,16 +226,18 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              thread.shopName,
+              widget.isShopOwner ? 'Tư Vấn Khách Hàng' : thread.shopName,
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
             Row(
-              children: const [
-                Icon(Icons.circle, color: AppTheme.primary, size: 8),
-                SizedBox(width: 4),
+              children: [
+                const Icon(Icons.circle, color: AppTheme.primary, size: 8),
+                const SizedBox(width: 4),
                 Text(
-                  'Kỹ thuật viên đang trực tuyến',
-                  style: TextStyle(color: AppTheme.primary, fontSize: 11),
+                  widget.isShopOwner
+                      ? 'Khách hàng quan tâm đan vợt'
+                      : 'Kỹ thuật viên đang trực tuyến',
+                  style: const TextStyle(color: AppTheme.primary, fontSize: 11),
                 ),
               ],
             ),
@@ -235,10 +272,18 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
                 return Padding(
                   padding: const EdgeInsets.only(right: 8),
                   child: ActionChip(
-                    label: Text(prompt, style: const TextStyle(fontSize: 11, color: AppTheme.textPrimary)),
+                    label: Text(
+                      prompt,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: AppTheme.textPrimary,
+                      ),
+                    ),
                     backgroundColor: AppTheme.surfaceLight,
                     side: const BorderSide(color: AppTheme.border),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
                     onPressed: () => _sendMessage(quickText: prompt),
                   ),
                 );
@@ -261,9 +306,17 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
                       controller: _msgController,
                       style: const TextStyle(color: AppTheme.textPrimary),
                       decoration: InputDecoration(
-                        hintText: 'Nhắn tin hỏi kỹ thuật viên về mức căng, dây cước...',
-                        hintStyle: const TextStyle(color: AppTheme.textMuted, fontSize: 13),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        hintText: widget.isShopOwner
+                            ? 'Nhập tin nhắn phản hồi cho khách hàng...'
+                            : 'Nhắn tin hỏi kỹ thuật viên về mức căng, dây cước...',
+                        hintStyle: const TextStyle(
+                          color: AppTheme.textMuted,
+                          fontSize: 13,
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
                         filled: true,
                         fillColor: AppTheme.surfaceLight,
                         border: OutlineInputBorder(
@@ -294,26 +347,33 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
   }
 
   Widget _buildMessageBubble(ChatMessage msg) {
+    // If shop owner: shop owner's own message is !msg.isFromUser
+    // If player: player's own message is msg.isFromUser
+    final isMe = widget.isShopOwner ? !msg.isFromUser : msg.isFromUser;
+
     return Align(
-      alignment: msg.isFromUser ? Alignment.centerRight : Alignment.centerLeft,
+      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
         margin: const EdgeInsets.only(bottom: 12),
-        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.78),
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * 0.78,
+        ),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          color: msg.isFromUser ? AppTheme.primary : AppTheme.surface,
+          color: isMe ? AppTheme.primary : AppTheme.surface,
           borderRadius: BorderRadius.only(
             topLeft: const Radius.circular(16),
             topRight: const Radius.circular(16),
-            bottomLeft: Radius.circular(msg.isFromUser ? 16 : 4),
-            bottomRight: Radius.circular(msg.isFromUser ? 4 : 16),
+            bottomLeft: Radius.circular(isMe ? 16 : 4),
+            bottomRight: Radius.circular(isMe ? 4 : 16),
           ),
           border: Border.all(
-            color: msg.isFromUser ? AppTheme.primary : AppTheme.border,
+            color: isMe ? AppTheme.primary : AppTheme.border,
           ),
         ),
         child: Column(
-          crossAxisAlignment: msg.isFromUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          crossAxisAlignment:
+              isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: [
             if (msg.attachedRacketName != null) ...[
               Container(
@@ -326,11 +386,19 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.sports_tennis_rounded, size: 12, color: Colors.black),
+                    const Icon(
+                      Icons.sports_tennis_rounded,
+                      size: 12,
+                      color: Colors.black,
+                    ),
                     const SizedBox(width: 4),
                     Text(
                       '${msg.attachedRacketName} (${msg.attachedTension})',
-                      style: const TextStyle(color: Colors.black, fontSize: 11, fontWeight: FontWeight.bold),
+                      style: const TextStyle(
+                        color: Colors.black,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ],
                 ),
@@ -339,16 +407,16 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
             Text(
               msg.text,
               style: TextStyle(
-                color: msg.isFromUser ? Colors.black : AppTheme.textPrimary,
+                color: isMe ? Colors.black : AppTheme.textPrimary,
                 fontSize: 14,
-                fontWeight: msg.isFromUser ? FontWeight.w600 : FontWeight.normal,
+                fontWeight: isMe ? FontWeight.w600 : FontWeight.normal,
               ),
             ),
             const SizedBox(height: 4),
             Text(
               _timeFormat.format(msg.timestamp),
               style: TextStyle(
-                color: msg.isFromUser ? Colors.black54 : AppTheme.textMuted,
+                color: isMe ? Colors.black54 : AppTheme.textMuted,
                 fontSize: 10,
               ),
             ),

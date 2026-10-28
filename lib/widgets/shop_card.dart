@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import '../models/shop_model.dart';
 import '../theme/app_theme.dart';
 

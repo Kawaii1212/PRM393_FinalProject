@@ -4,6 +4,7 @@ import '../../models/user_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../theme/app_theme.dart';
 import '../admin/admin_dashboard_screen.dart';
+import '../shop_owner/shop_owner_dashboard_screen.dart';
 import '../sport/sport_selection_screen.dart';
 import 'login_register_screen.dart';
 
@@ -39,7 +40,9 @@ class _SplashScreenState extends State<SplashScreen> {
             ? const LoginRegisterScreen()
             : (user?.role == UserRole.admin
                 ? const AdminDashboardScreen()
-                : const SportSelectionScreen()),
+                : (user?.role == UserRole.stringer
+                    ? const ShopOwnerDashboardScreen()
+                    : const SportSelectionScreen())),
       ),
     );
   }
@@ -99,14 +102,6 @@ class _SplashScreenState extends State<SplashScreen> {
                 child: CircularProgressIndicator(
                   strokeWidth: 3,
                   color: AppTheme.primary,
-                ),
-              ),
-              const SizedBox(height: 14),
-              const Text(
-                'Đang đồng bộ phiên người dùng...',
-                style: TextStyle(
-                  color: AppTheme.textMuted,
-                  fontSize: 12,
                 ),
               ),
             ],

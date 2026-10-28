@@ -1,4 +1,4 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -731,7 +731,7 @@ class ShopProvider with ChangeNotifier {
   node["sport"="badminton"](around:$radius,${center.latitude},${center.longitude});
   way["sport"="badminton"](around:$radius,${center.latitude},${center.longitude});
 );
-out center 10;
+out center 40;
 ''';
       final res = await http
           .post(
@@ -742,12 +742,14 @@ out center 10;
 
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body) as Map<String, dynamic>;
-        final elements = data['elements'] as List<dynamic>? ?? [];
-        final List<Shop> poiShops = [];
-
-        for (int i = 0; i < elements.length && poiShops.length < 8; i++) {
-          final el = elements[i] as Map<String, dynamic>;
+        final rawElements = data['elements'] as List<dynamic>? ?? [];
+        // Sắp xếp ưu tiên các điểm gần vị trí người dùng nhất (đặc biệt trong bán kính 2 km)
+        final elementsWithDist = <Map<String, dynamic>>[];
+        for (final raw in rawElements) {
+          final el = raw as Map<String, dynamic>;
           final tags = el['tags'] as Map<String, dynamic>? ?? {};
+          final rawName = tags['name']?.toString().trim();
+          if (rawName == null || rawName.isEmpty) continue;
 
           double? lat = (el['lat'] as num?)?.toDouble();
           double? lng = (el['lon'] as num?)?.toDouble();
@@ -758,8 +760,32 @@ out center 10;
           }
           if (lat == null || lng == null) continue;
 
-          final rawName = tags['name']?.toString().trim();
-          if (rawName == null || rawName.isEmpty) continue;
+          final distKm = distanceCalc.as(
+            LengthUnit.Kilometer,
+            center,
+            LatLng(lat, lng),
+          );
+          elementsWithDist.add({
+            'el': el,
+            'lat': lat,
+            'lng': lng,
+            'distKm': distKm,
+          });
+        }
+        elementsWithDist.sort(
+          (a, b) => (a['distKm'] as double).compareTo(b['distKm'] as double),
+        );
+
+        final List<Shop> poiShops = [];
+
+        for (int i = 0; i < elementsWithDist.length && poiShops.length < 15; i++) {
+          final item = elementsWithDist[i];
+          final el = item['el'] as Map<String, dynamic>;
+          final lat = item['lat'] as double;
+          final lng = item['lng'] as double;
+          final distKm = item['distKm'] as double;
+          final tags = el['tags'] as Map<String, dynamic>? ?? {};
+          final rawName = tags['name']!.toString().trim();
 
           final street = tags['addr:street']?.toString() ?? '';
           final houseNum = tags['addr:housenumber']?.toString() ?? '';
@@ -776,12 +802,6 @@ out center 10;
             final geo = await _reverseGeocode(lat, lng);
             address = geo['shortAddress'] ?? 'Gần $_userAreaLabel';
           }
-
-          final distKm = distanceCalc.as(
-            LengthUnit.Kilometer,
-            center,
-            LatLng(lat, lng),
-          );
 
           poiShops.add(
             Shop(

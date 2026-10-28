@@ -7,6 +7,7 @@ import '../../providers/shop_provider.dart';
 import '../../providers/admin_provider.dart';
 import '../../theme/app_theme.dart';
 import '../admin/admin_dashboard_screen.dart';
+import '../shop_owner/shop_owner_dashboard_screen.dart';
 import '../sport/sport_selection_screen.dart';
 
 class LoginRegisterScreen extends StatefulWidget {
@@ -149,7 +150,9 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
         MaterialPageRoute(
           builder: (_) => user?.role == UserRole.admin
               ? const AdminDashboardScreen()
-              : const SportSelectionScreen(),
+              : (user?.role == UserRole.stringer
+                  ? const ShopOwnerDashboardScreen()
+                  : const SportSelectionScreen()),
         ),
       );
     }
