@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
@@ -54,6 +54,7 @@ class _ShopMapScreenState extends State<ShopMapScreen> {
   double _selectedRadiusKm = 2.0;
   MapStyleMode _mapStyle = MapStyleMode.osmStandard;
 
+  /// Tính toán mức zoom bản đồ phù hợp với từng bán kính (km)
   double _zoomForRadius(double radiusKm) {
     if (radiusKm <= 1.0) return 15.2;
     if (radiusKm <= 2.0) return 14.3;
@@ -186,6 +187,22 @@ class _ShopMapScreenState extends State<ShopMapScreen> {
                 )
                 .toList(),
           ),
+          // Nút xem nhanh các shop tại khu vực trung tâm Hà Nội
+          IconButton(
+            tooltip: 'Xem khu vực trung tâm Hà Nội',
+            icon: const Icon(Icons.location_city_rounded, color: AppTheme.accent),
+            onPressed: () {
+              _mapController.move(const LatLng(21.0271, 105.7733), 13.5);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'Đang xem các Cửa Hàng Cầu Lông khu vực trung tâm Hà Nội 🏸',
+                  ),
+                  duration: Duration(seconds: 2),
+                ),
+              );
+            },
+          ),
           // Nút định vị lại vị trí của tôi
           IconButton(
             tooltip: 'Định vị lại vị trí của tôi',
@@ -216,9 +233,7 @@ class _ShopMapScreenState extends State<ShopMapScreen> {
               initialZoom: _currentZoom,
               minZoom: 5.0,
               maxZoom: 18.5,
-              // Chạm vào vùng trống trên bản đồ sẽ đóng phần giới thiệu cửa hàng
               onTap: (_, _) => shopProvider.clearSelection(),
-              // Nhấn giữ trên bản đồ để đổi vị trí đứng thử nghiệm
               onLongPress: (_, latLng) {
                 shopProvider.updateUserLocation(latLng);
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -266,7 +281,7 @@ class _ShopMapScreenState extends State<ShopMapScreen> {
                   ],
                 ),
 
-              // Các Marker trên bản đồ
+              // MarkerLayer
               MarkerLayer(
                 markers: [
                   // Marker vị trí hiện tại của người dùng
@@ -326,86 +341,168 @@ class _ShopMapScreenState extends State<ShopMapScreen> {
                     ),
                   ),
 
-                  // Marker của các Cửa Hàng Cầu Lông gần bạn
-                  for (final shop in shops)
-                    Marker(
-                      point: LatLng(shop.latitude, shop.longitude),
-                      width: 175,
-                      height: 74,
-                      child: GestureDetector(
-                        onTap: () => _onShopTapped(shop),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 4,
-                              ),
+                  // Marker của các Cửa Hàng Cầu Lông
+                  for (int i = 0; i < shops.length; i++) ...[
+                    () {
+                      final shop = shops[i];
+                      final isSelected = selectedShop?.id == shop.id;
+                      final isTop3 = i < 3;
+
+                      if (isSelected) {
+                        return Marker(
+                          point: LatLng(shop.latitude, shop.longitude),
+                          width: 180,
+                          height: 74,
+                          child: GestureDetector(
+                            onTap: () => _onShopTapped(shop),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.primary,
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(
+                                      color: Colors.black,
+                                      width: 1.5,
+                                    ),
+                                    boxShadow: const [
+                                      BoxShadow(
+                                        color: Colors.black54,
+                                        blurRadius: 6,
+                                        offset: Offset(0, 3),
+                                      ),
+                                    ],
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(
+                                        Icons.sports_tennis_rounded,
+                                        color: Colors.black,
+                                        size: 13,
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Flexible(
+                                        child: Text(
+                                          '${shop.name.split('-').first.trim()} (${shop.distanceKm}km)',
+                                          style: const TextStyle(
+                                            color: Colors.black,
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const Icon(
+                                  Icons.location_on_rounded,
+                                  color: AppTheme.danger,
+                                  size: 34,
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      } else if (isTop3) {
+                        return Marker(
+                          point: LatLng(shop.latitude, shop.longitude),
+                          width: 140,
+                          height: 60,
+                          child: GestureDetector(
+                            onTap: () => _onShopTapped(shop),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 3,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.surface.withOpacity(0.95),
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(
+                                      color: AppTheme.primary,
+                                      width: 1.2,
+                                    ),
+                                    boxShadow: const [
+                                      BoxShadow(
+                                        color: Colors.black45,
+                                        blurRadius: 4,
+                                        offset: Offset(0, 2),
+                                      ),
+                                    ],
+                                  ),
+                                  child: Text(
+                                    '${shop.name.split('-').first.trim()} • ${shop.distanceKm}km',
+                                    style: const TextStyle(
+                                      color: AppTheme.textPrimary,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                const Icon(
+                                  Icons.location_on_rounded,
+                                  color: AppTheme.primary,
+                                  size: 26,
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      } else {
+                        return Marker(
+                          point: LatLng(shop.latitude, shop.longitude),
+                          width: 32,
+                          height: 32,
+                          child: GestureDetector(
+                            onTap: () => _onShopTapped(shop),
+                            child: Container(
                               decoration: BoxDecoration(
-                                color: selectedShop?.id == shop.id
-                                    ? AppTheme.primary
-                                    : AppTheme.surface,
-                                borderRadius: BorderRadius.circular(20),
+                                color: AppTheme.surface,
+                                shape: BoxShape.circle,
                                 border: Border.all(
-                                  color: selectedShop?.id == shop.id
-                                      ? Colors.black
-                                      : AppTheme.primary,
-                                  width: 1.5,
+                                  color: AppTheme.primary,
+                                  width: 1.8,
                                 ),
                                 boxShadow: const [
                                   BoxShadow(
-                                    color: Colors.black54,
-                                    blurRadius: 6,
-                                    offset: Offset(0, 3),
+                                    color: Colors.black45,
+                                    blurRadius: 4,
+                                    offset: Offset(0, 2),
                                   ),
                                 ],
                               ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    Icons.sports_tennis_rounded,
-                                    color: selectedShop?.id == shop.id
-                                        ? Colors.black
-                                        : AppTheme.primary,
-                                    size: 13,
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Flexible(
-                                    child: Text(
-                                      '${shop.name.split('-').first.trim()} (${shop.distanceKm}km)',
-                                      style: TextStyle(
-                                        color: selectedShop?.id == shop.id
-                                            ? Colors.black
-                                            : AppTheme.textPrimary,
-                                        fontSize: 10.5,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ],
+                              child: const Center(
+                                child: Icon(
+                                  Icons.sports_tennis_rounded,
+                                  color: AppTheme.primary,
+                                  size: 16,
+                                ),
                               ),
                             ),
-                            Icon(
-                              Icons.location_on_rounded,
-                              color: selectedShop?.id == shop.id
-                                  ? AppTheme.danger
-                                  : AppTheme.primaryDark,
-                              size: 34,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
+                          ),
+                        );
+                      }
+                    }(),
+                  ],
                 ],
               ),
             ],
           ),
 
-          // 2. Dải Gợi Ý Các Cửa Hàng Cầu Lông Gần Vị Trí Của Bạn (Có kèm vị trí & khoảng cách)
+          // 2. Dải Gợi Ý Các Cửa Hàng Cầu Lông Gần Vị Trí Của Bạn
           Positioned(
             top: 12,
             left: 14,
@@ -413,7 +510,6 @@ class _ShopMapScreenState extends State<ShopMapScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Thanh hiển thị vị trí hiện tại của người dùng + Chọn khoảng cách bán kính hiển thị
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 12,
@@ -563,7 +659,7 @@ class _ShopMapScreenState extends State<ShopMapScreen> {
                 ),
                 const SizedBox(height: 8),
 
-                // Các thẻ gợi ý cửa hàng kèm vị trí & khoảng cách trong bán kính đã chọn
+                // Thông báo khi không có shop trong bán kính
                 if (shops.isEmpty)
                   Container(
                     width: double.infinity,
@@ -726,7 +822,7 @@ class _ShopMapScreenState extends State<ShopMapScreen> {
             ),
           ),
 
-          // 4. Phần giới thiệu cửa hàng: CHỈ HIỂN THỊ KHI NGƯỜI DÙNG CLICK VÀO CỬA HÀNG TRÊN BẢN ĐỒ
+          // 4. Phần giới thiệu cửa hàng: CHỈ HIỂN THỊ KHI CLICK VÀO CỬA HÀNG
           if (selectedShop != null)
             Positioned(
               bottom: 14,
@@ -877,7 +973,7 @@ class _ShopMapScreenState extends State<ShopMapScreen> {
                     ),
                     const SizedBox(height: 12),
 
-                    // Action buttons: Xem Dịch Vụ + Chỉ Đường + Chat
+                    // Action buttons
                     Row(
                       children: [
                         Expanded(
@@ -891,7 +987,7 @@ class _ShopMapScreenState extends State<ShopMapScreen> {
                                 ),
                               );
                             },
-                            child: const Text('Xem Dịch Vụ & Đặt Lịch'),
+                            child: const Text('Xem Dịch Vụ & Trưng Bày'),
                           ),
                         ),
                         const SizedBox(width: 8),
