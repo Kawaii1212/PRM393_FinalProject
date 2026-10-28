@@ -3,12 +3,22 @@ import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
-import '../config/api_config.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/shop_model.dart';
 import '../models/product_model.dart';
+import '../data/csv_shop_data.dart';
+import '../data/hcm_shop_data.dart';
+
 
 class ShopProvider with ChangeNotifier {
+  /// Bán kính tìm kiếm cửa hàng xung quanh người dùng mặc định (8.0 km)
+  static const double defaultSearchRadiusKm = 8.0;
+  static const double searchRadiusKm = defaultSearchRadiusKm;
+
+  double _searchRadiusKm = defaultSearchRadiusKm;
   List<Shop> _shops = [];
+  List<Shop> _allShops = [];
   final List<Product> _products = [];
 
   String _searchQuery = '';
@@ -28,6 +38,37 @@ class ShopProvider with ChangeNotifier {
   String get userAreaLabel => _userAreaLabel;
   bool get isLocating => _isLocating;
   bool get hasInitializedLocation => _hasInitializedLocation;
+  double get currentSearchRadiusKm => _searchRadiusKm;
+
+  /// Nhãn hiển thị bán kính ngắn gọn (ví dụ: "8km", "15km", "30km")
+  String get radiusLabel {
+    if (_searchRadiusKm == _searchRadiusKm.roundToDouble()) {
+      return '${_searchRadiusKm.toInt()}km';
+    }
+    return '${_searchRadiusKm.toStringAsFixed(1)}km';
+  }
+
+  /// Cập nhật bán kính tìm kiếm và tự động lọc lại danh sách cửa hàng
+  void setSearchRadius(double radiusKm) {
+    if ((_searchRadiusKm - radiusKm).abs() < 0.05) return;
+    _searchRadiusKm = radiusKm;
+    _filterShopsByRadius();
+    notifyListeners();
+  }
+
+  /// Đặt lại bán kính về mặc định 8km
+  void resetSearchRadius() {
+    setSearchRadius(defaultSearchRadiusKm);
+  }
+
+  /// Đếm số lượng cửa hàng tìm thấy tương ứng với từng bán kính (dùng cho Slider)
+  int getShopCountForRadius(double radiusKm) {
+    if (_allShops.isEmpty) return 0;
+    return _allShops.where((s) => s.distanceKm <= radiusKm).length;
+  }
+
+  /// Lấy toàn bộ cửa hàng có sẵn đã tính khoảng cách
+  List<Shop> get allShops => List.unmodifiable(_allShops);
 
   List<Shop> get shops {
     if (_searchQuery.isEmpty) {
@@ -64,15 +105,96 @@ class ShopProvider with ChangeNotifier {
 
   Shop? getShopById(String id) {
     try {
-      return _shops.firstWhere((s) => s.id == id);
+      return _allShops.firstWhere((s) => s.id == id);
     } catch (_) {
-      return null;
+      try {
+        return _shops.firstWhere((s) => s.id == id);
+      } catch (_) {
+        return null;
+      }
     }
   }
 
   /// Lấy danh sách toàn bộ sản phẩm & dịch vụ cho cửa hàng
   List<Product> getProductsForShop(String shopId) {
-    return _products.where((p) => p.shopId == shopId).toList();
+    final custom = _products.where((p) => p.shopId == shopId).toList();
+    if (custom.isNotEmpty) return custom;
+
+    // Danh mục dịch vụ đan cước & phụ kiện mặc định cho mọi shop
+    return [
+      Product(
+        id: '${shopId}_srv_01',
+        shopId: shopId,
+        name: 'Công đan cước 4 nút máy điện tử Yonex',
+        category: ProductCategory.service,
+        price: 40000,
+        description:
+            'Đan theo chuẩn Yonex World Tour, kẹp cước điện tử không dập cước, bảo vệ khung tuyệt đối.',
+        imageUrl:
+            'https://images.unsplash.com/photo-1587280501635-68a0e82cd5ff?auto=format&fit=crop&w=600&q=80',
+        isService: true,
+      ),
+      Product(
+        id: '${shopId}_srv_02',
+        shopId: shopId,
+        name: 'Gói đan cước lấy ngay trong 20 phút',
+        category: ProductCategory.service,
+        price: 60000,
+        description:
+            'Ưu tiên lên máy ngay lập tức, kiểm tra gen miễn phí, căn chỉnh cân bằng tĩnh.',
+        imageUrl:
+            'https://images.unsplash.com/photo-1587280501635-68a0e82cd5ff?auto=format&fit=crop&w=600&q=80',
+        isService: true,
+      ),
+      Product(
+        id: '${shopId}_str_01',
+        shopId: shopId,
+        name: 'Dây Cước Yonex Exbolt 65 (0.65mm)',
+        category: ProductCategory.string,
+        price: 175000,
+        description:
+            'Công nghệ sợi Forged Fiber siêu bền, trợ lực bùng nổ, âm thanh vang dội đanh tai.',
+        imageUrl:
+            'https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?auto=format&fit=crop&w=600&q=80',
+        availableColors: ['Trắng', 'Vàng Chanh', 'Đen'],
+      ),
+      Product(
+        id: '${shopId}_str_02',
+        shopId: shopId,
+        name: 'Dây Cước Li-Ning No.1 (0.65mm)',
+        category: ProductCategory.string,
+        price: 150000,
+        description:
+            'Độ nảy 10/10, âm nổ cực đanh, cước trợ lực số 1 của thương hiệu Li-Ning.',
+        imageUrl:
+            'https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?auto=format&fit=crop&w=600&q=80',
+        availableColors: ['Trắng', 'Đỏ', 'Cam'],
+      ),
+      Product(
+        id: '${shopId}_str_03',
+        shopId: shopId,
+        name: 'Dây Cước Yonex BG65 Ti Quốc Dân (0.70mm)',
+        category: ProductCategory.string,
+        price: 130000,
+        description:
+            'Phủ hợp kim Titanium bền bỉ, thích hợp người chơi phong trào tiết kiệm chi phí.',
+        imageUrl:
+            'https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?auto=format&fit=crop&w=600&q=80',
+        availableColors: ['Trắng', 'Đen', 'Vàng'],
+      ),
+      Product(
+        id: '${shopId}_grp_01',
+        shopId: shopId,
+        name: 'Quấn cán Yonex AC102EX Super Grap',
+        category: ProductCategory.grip,
+        price: 35000,
+        description:
+            'Quấn cán cao su bám tay số 1 thế giới, chống trơn tuyệt đối, độ dày 0.6mm.',
+        imageUrl:
+            'https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?auto=format&fit=crop&w=600&q=80',
+        availableColors: ['Trắng', 'Đen', 'Vàng', 'Đỏ', 'Tím'],
+      ),
+    ];
   }
 
   List<Product> getServicesForShop(String shopId) {
@@ -177,354 +299,139 @@ class ShopProvider with ChangeNotifier {
     }
   }
 
-  /// Gọi Google Places API (Giải pháp 4) để lấy danh sách các cửa hàng cầu lông có thật xung quanh tọa độ `center`
-  /// mà không cần hardcode địa chỉ và không yêu cầu người dùng nhập API key trên màn hình.
+  /// Nạp danh sách các cửa hàng cầu lông:
+  /// 1. Tải toàn bộ 121 cửa hàng thực tế TP.HCM từ mapHCM.csv (HcmShopData)
+  ///    kết hợp 117 cửa hàng từ google.csv (CsvShopData) và Cloud Firestore (nếu có)
+  /// 2. Tự động tính khoảng cách thực tế (km) từ vị trí hiện tại của người dùng đến từng shop
+  /// 3. Sắp xếp các shop từ gần nhất đến xa nhất
   Future<void> _loadNearbyBadmintonShops(LatLng center) async {
     // Cập nhật tên khu vực hiện tại của người dùng
     final userGeo = await _reverseGeocode(center.latitude, center.longitude);
     _userAreaLabel = userGeo['shortAddress'] ?? 'Vị trí hiện tại của bạn';
 
-    // 1. Ưu tiên gọi Google Places API (hỗ trợ cả Places API New v1 & Places API Legacy)
-    List<Shop> discoveredShops = await _fetchFromGooglePlacesNew(center);
-    if (discoveredShops.isEmpty) {
-      discoveredShops = await _fetchFromGooglePlacesLegacy(center);
+    const Distance distanceCalc = Distance();
+
+    // 1. Dữ liệu nền tảng phong phú: 121 shop TP.HCM thực tế (từ mapHCM.csv) + Hà Nội (google.csv)
+    final Map<String, Shop> shopMap = {
+      for (final s in HcmShopData.shops) s.id: s,
+      for (final s in CsvShopData.shops) s.id: s,
+    };
+
+    // 2. Đồng bộ thêm từ Cloud Firestore (collection 'shops') nếu có
+    if (_isFirebaseReady) {
+      try {
+        final firestoreShops = await _fetchShopsFromFirestore();
+        for (final s in firestoreShops) {
+          shopMap[s.id] = s;
+        }
+      } catch (e) {
+        debugPrint('Firestore shop sync note: $e');
+      }
     }
 
-    // 2. Nếu Google API Key chưa kích hoạt Billing trên Google Cloud, tự động lấy dữ liệu POI thực tế xung quanh
-    if (discoveredShops.isEmpty) {
-      discoveredShops = await _fetchRealPOIShopsFallback(center);
-    }
+    final List<Shop> allAvailableShops = shopMap.values.toList();
 
-    // Sắp xếp cửa hàng gần nhất lên đầu
-    discoveredShops.sort((a, b) => a.distanceKm.compareTo(b.distanceKm));
-    _shops = discoveredShops;
+    // Tính toán khoảng cách thực tế từ vị trí người dùng đến từng shop
+    final List<Shop> computedShops = allAvailableShops.map((s) {
+      final distKm = distanceCalc.as(
+        LengthUnit.Kilometer,
+        center,
+        LatLng(s.latitude, s.longitude),
+      );
+      return s.copyWith(distanceKm: double.parse(distKm.toStringAsFixed(1)));
+    }).toList();
+
+    // Sắp xếp các shop gần vị trí hiện tại nhất lên đầu
+    computedShops.sort((a, b) => a.distanceKm.compareTo(b.distanceKm));
+    _allShops = computedShops;
+
+    // Lọc danh sách hiển thị theo bán kính người dùng đã chọn
+    _filterShopsByRadius();
 
     if (_selectedShop != null) {
       _selectedShop = getShopById(_selectedShop!.id);
     }
   }
 
-  /// Gọi Google Places API (New - v1: `places:searchText`) với `locationBias` quanh vị trí người dùng
-  Future<List<Shop>> _fetchFromGooglePlacesNew(LatLng center) async {
-    final apiKey = ApiConfig.googlePlacesApiKey.trim();
-    if (apiKey.isEmpty) return [];
+  /// Lọc danh sách shop hiển thị dựa theo bán kính _searchRadiusKm
+  void _filterShopsByRadius() {
+    if (_allShops.isEmpty) return;
 
+    final filtered = _allShops
+        .where((s) => s.distanceKm <= _searchRadiusKm)
+        .toList();
+
+    // Nếu ở tỉnh xa (shop gần nhất cách > 50km) và không có shop nào trong bán kính:
+    // Fallback 5 shop gần nhất để người dùng thử nghiệm tính năng
+    if (filtered.isEmpty &&
+        _allShops.isNotEmpty &&
+        _allShops.first.distanceKm > 50.0) {
+      _shops = _allShops.take(5).toList();
+    } else {
+      _shops = filtered;
+    }
+
+    // Nếu shop đang chọn nằm ngoài bán kính mới thì bỏ chọn
+    if (_selectedShop != null &&
+        !_shops.any((s) => s.id == _selectedShop!.id)) {
+      _selectedShop = null;
+    }
+  }
+
+  // --- Cloud Firestore Integration ---
+  bool get _isFirebaseReady => Firebase.apps.isNotEmpty;
+
+  /// Lấy danh sách cửa hàng từ Cloud Firestore
+  Future<List<Shop>> _fetchShopsFromFirestore() async {
+    if (!_isFirebaseReady) return [];
     try {
-      final url = Uri.parse('https://places.googleapis.com/v1/places:searchText');
-      final response = await http
-          .post(
-            url,
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Goog-Api-Key': apiKey,
-              'X-Goog-FieldMask':
-                  'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.nationalPhoneNumber,places.regularOpeningHours',
-            },
-            body: jsonEncode({
-              'textQuery': ApiConfig.defaultBadmintonShopQuery,
-              'languageCode': 'vi',
-              'maxResultCount': 10,
-              'locationBias': {
-                'circle': {
-                  'center': {
-                    'latitude': center.latitude,
-                    'longitude': center.longitude,
-                  },
-                  'radius': ApiConfig.searchRadiusMeters,
-                },
-              },
-            }),
-          )
-          .timeout(const Duration(seconds: 6));
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
-        final places = data['places'] as List<dynamic>? ?? [];
-        if (places.isNotEmpty) {
-          return _mapGooglePlacesNewToShops(places, center);
-        }
-      } else {
-        debugPrint('Google Places API (New) status ${response.statusCode}');
-      }
+      final snapshot = await FirebaseFirestore.instance
+          .collection('shops')
+          .get()
+          .timeout(const Duration(seconds: 4));
+      return snapshot.docs
+          .map((doc) => Shop.fromMap(doc.data(), docId: doc.id))
+          .toList();
     } catch (e) {
-      debugPrint('Google Places API (New) warning: $e');
+      debugPrint('Error fetching shops from Firestore: $e');
+      return [];
     }
-    return [];
   }
 
-  /// Gọi Google Places API (Legacy Nearby/Text Search) trong trường hợp project bật Places API bản chuẩn
-  Future<List<Shop>> _fetchFromGooglePlacesLegacy(LatLng center) async {
-    final apiKey = ApiConfig.googlePlacesApiKey.trim();
-    if (apiKey.isEmpty) return [];
-
+  /// Đẩy dữ liệu cửa hàng lên Cloud Firestore (collection 'shops')
+  Future<int> seedShopsToFirestore({bool hcmOnly = false}) async {
+    if (!_isFirebaseReady) {
+      debugPrint('Firebase is not initialized.');
+      return 0;
+    }
     try {
-      final url = Uri.parse(
-        'https://maps.googleapis.com/maps/api/place/textsearch/json'
-        '?query=${Uri.encodeComponent('cửa hàng cầu lông')}'
-        '&location=${center.latitude},${center.longitude}'
-        '&radius=${ApiConfig.searchRadiusMeters.toInt()}'
-        '&language=vi'
-        '&key=$apiKey',
-      );
+      final firestore = FirebaseFirestore.instance;
+      final targetShops = hcmOnly
+          ? HcmShopData.shops
+          : [...HcmShopData.shops, ...CsvShopData.shops];
 
-      final response = await http.get(url).timeout(const Duration(seconds: 6));
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
-        final status = data['status']?.toString() ?? '';
-        if (status == 'OK') {
-          final results = data['results'] as List<dynamic>? ?? [];
-          if (results.isNotEmpty) {
-            return _mapGooglePlacesLegacyToShops(results, center);
-          }
-        } else {
-          debugPrint('Google Places Legacy status: $status');
+      // Đẩy theo từng batch (Firestore cho phép tối đa 500 ops/batch)
+      const int batchSize = 400;
+      int count = 0;
+      for (int i = 0; i < targetShops.length; i += batchSize) {
+        final batch = firestore.batch();
+        final chunk = targetShops.skip(i).take(batchSize);
+        for (final shop in chunk) {
+          final docRef = firestore.collection('shops').doc(shop.id);
+          batch.set(docRef, shop.toMap(), SetOptions(merge: true));
+          count++;
         }
+        await batch.commit();
       }
+      debugPrint('Successfully seeded $count shops to Firestore!');
+      return count;
     } catch (e) {
-      debugPrint('Google Places Legacy warning: $e');
+      debugPrint('seedShopsToFirestore error: $e');
+      return 0;
     }
-    return [];
   }
 
-  List<Shop> _mapGooglePlacesNewToShops(
-    List<dynamic> places,
-    LatLng center,
-  ) {
-    const Distance distanceCalc = Distance();
-    final List<Shop> result = [];
 
-    for (int i = 0; i < places.length; i++) {
-      final item = places[i] as Map<String, dynamic>;
-      final loc = item['location'] as Map<String, dynamic>?;
-      if (loc == null) continue;
-
-      final lat = (loc['latitude'] as num?)?.toDouble();
-      final lng = (loc['longitude'] as num?)?.toDouble();
-      if (lat == null || lng == null) continue;
-
-      final displayNameObj = item['displayName'] as Map<String, dynamic>?;
-      final name = displayNameObj?['text']?.toString() ?? 'Cửa hàng thể thao';
-      final address =
-          item['formattedAddress']?.toString() ?? 'Khu vực $_userAreaLabel';
-      final rating = (item['rating'] as num?)?.toDouble() ?? 0.0;
-      final reviewCount = (item['userRatingCount'] as num?)?.toInt() ?? 0;
-      final phone = item['nationalPhoneNumber']?.toString() ?? 'Chưa cập nhật';
-
-      String openHours = 'Chưa cập nhật giờ mở cửa';
-      final openingHoursObj =
-          item['regularOpeningHours'] as Map<String, dynamic>?;
-      if (openingHoursObj != null && openingHoursObj['openNow'] != null) {
-        final isOpen = openingHoursObj['openNow'] == true;
-        openHours = isOpen ? 'Đang mở cửa' : 'Đang đóng cửa';
-      }
-
-      final distKm = distanceCalc.as(
-        LengthUnit.Kilometer,
-        center,
-        LatLng(lat, lng),
-      );
-
-      result.add(
-        Shop(
-          id: item['id']?.toString() ?? 'gplace_new_$i',
-          name: name,
-          address: address,
-          district: _extractDistrictFromAddress(address),
-          city: _extractCityFromAddress(address),
-          latitude: lat,
-          longitude: lng,
-          rating: double.parse(rating.toStringAsFixed(1)),
-          reviewCount: reviewCount,
-          machineModel: 'Chưa cập nhật thông tin máy đan',
-          stringerCert: 'Chưa cập nhật chứng chỉ thợ đan',
-          phone: phone,
-          openHours: openHours,
-          imageUrl: '',
-          distanceKm: double.parse(distKm.toStringAsFixed(1)),
-        ),
-      );
-    }
-
-    return result;
-  }
-
-  List<Shop> _mapGooglePlacesLegacyToShops(
-    List<dynamic> results,
-    LatLng center,
-  ) {
-    const Distance distanceCalc = Distance();
-    final List<Shop> list = [];
-
-    for (int i = 0; i < results.length && i < 10; i++) {
-      final item = results[i] as Map<String, dynamic>;
-      final geometry = item['geometry'] as Map<String, dynamic>?;
-      final loc = geometry?['location'] as Map<String, dynamic>?;
-      if (loc == null) continue;
-
-      final lat = (loc['lat'] as num?)?.toDouble();
-      final lng = (loc['lng'] as num?)?.toDouble();
-      if (lat == null || lng == null) continue;
-
-      final name = item['name']?.toString() ?? 'Cửa hàng thể thao';
-      final address = item['formatted_address']?.toString() ??
-          item['vicinity']?.toString() ??
-          'Khu vực $_userAreaLabel';
-      final rating = (item['rating'] as num?)?.toDouble() ?? 0.0;
-      final reviewCount = (item['user_ratings_total'] as num?)?.toInt() ?? 0;
-
-      String openHours = 'Chưa cập nhật giờ mở cửa';
-      final openingHours = item['opening_hours'] as Map<String, dynamic>?;
-      if (openingHours != null && openingHours['open_now'] != null) {
-        openHours = openingHours['open_now'] == true
-            ? 'Đang mở cửa'
-            : 'Đang đóng cửa';
-      }
-
-      final distKm = distanceCalc.as(
-        LengthUnit.Kilometer,
-        center,
-        LatLng(lat, lng),
-      );
-
-      list.add(
-        Shop(
-          id: item['place_id']?.toString() ?? 'gplace_legacy_$i',
-          name: name,
-          address: address,
-          district: _extractDistrictFromAddress(address),
-          city: _extractCityFromAddress(address),
-          latitude: lat,
-          longitude: lng,
-          rating: double.parse(rating.toStringAsFixed(1)),
-          reviewCount: reviewCount,
-          machineModel: 'Chưa cập nhật thông tin máy đan',
-          stringerCert: 'Chưa cập nhật chứng chỉ thợ đan',
-          phone: 'Chưa cập nhật',
-          openHours: openHours,
-          imageUrl: '',
-          distanceKm: double.parse(distKm.toStringAsFixed(1)),
-        ),
-      );
-    }
-
-    return list;
-  }
-
-  /// Truy vấn dự phòng các cửa hàng cầu lông/thể thao thực tế quanh vị trí người dùng
-  /// khi Google Cloud API Key chưa được kích hoạt thanh toán (Billing)
-  Future<List<Shop>> _fetchRealPOIShopsFallback(LatLng center) async {
-    const Distance distanceCalc = Distance();
-
-    try {
-      final radius = ApiConfig.searchRadiusMeters.toInt();
-      final query = '''
-[out:json][timeout:6];
-(
-  node["shop"="sports"](around:$radius,${center.latitude},${center.longitude});
-  way["shop"="sports"](around:$radius,${center.latitude},${center.longitude});
-  node["sport"="badminton"](around:$radius,${center.latitude},${center.longitude});
-  way["sport"="badminton"](around:$radius,${center.latitude},${center.longitude});
-);
-out center 10;
-''';
-      final res = await http
-          .post(
-            Uri.parse('https://overpass-api.de/api/interpreter'),
-            body: {'data': query},
-          )
-          .timeout(const Duration(seconds: 6));
-
-      if (res.statusCode == 200) {
-        final data = jsonDecode(res.body) as Map<String, dynamic>;
-        final elements = data['elements'] as List<dynamic>? ?? [];
-        final List<Shop> poiShops = [];
-
-        for (int i = 0; i < elements.length && poiShops.length < 8; i++) {
-          final el = elements[i] as Map<String, dynamic>;
-          final tags = el['tags'] as Map<String, dynamic>? ?? {};
-
-          double? lat = (el['lat'] as num?)?.toDouble();
-          double? lng = (el['lon'] as num?)?.toDouble();
-          if (lat == null || lng == null) {
-            final c = el['center'] as Map<String, dynamic>?;
-            lat = (c?['lat'] as num?)?.toDouble();
-            lng = (c?['lon'] as num?)?.toDouble();
-          }
-          if (lat == null || lng == null) continue;
-
-          final rawName = tags['name']?.toString().trim();
-          if (rawName == null || rawName.isEmpty) continue;
-
-          final street = tags['addr:street']?.toString() ?? '';
-          final houseNum = tags['addr:housenumber']?.toString() ?? '';
-          final district = tags['addr:district']?.toString() ??
-              tags['addr:suburb']?.toString() ??
-              'Khu vực lân cận';
-          final city = tags['addr:city']?.toString() ?? 'Việt Nam';
-
-          String address = [houseNum, street, district]
-              .where((s) => s.isNotEmpty)
-              .join(' ')
-              .trim();
-          if (address.isEmpty || address == district) {
-            final geo = await _reverseGeocode(lat, lng);
-            address = geo['shortAddress'] ?? 'Gần $_userAreaLabel';
-          }
-
-          final distKm = distanceCalc.as(
-            LengthUnit.Kilometer,
-            center,
-            LatLng(lat, lng),
-          );
-
-          poiShops.add(
-            Shop(
-              id: 'poi_${el['id'] ?? i}',
-              name: rawName,
-              address: address,
-              district: district,
-              city: city,
-              latitude: lat,
-              longitude: lng,
-              rating: 0.0,
-              reviewCount: 0,
-              machineModel: 'Chưa cập nhật thông tin máy đan',
-              stringerCert: 'Chưa cập nhật chứng chỉ thợ đan',
-              phone: tags['phone']?.toString() ??
-                  tags['contact:phone']?.toString() ??
-                  'Chưa cập nhật',
-              openHours: tags['opening_hours']?.toString() ?? 'Chưa cập nhật',
-              imageUrl: '',
-              distanceKm: double.parse(distKm.toStringAsFixed(1)),
-            ),
-          );
-        }
-
-        if (poiShops.isNotEmpty) {
-          return poiShops;
-        }
-      }
-    } catch (e) {
-      debugPrint('Real POI fallback warning: $e');
-    }
-    return [];
-  }
-
-  String _extractDistrictFromAddress(String address) {
-    final parts = address.split(',').map((e) => e.trim()).toList();
-    if (parts.length >= 2) {
-      return parts[parts.length - 2];
-    }
-    return 'Khu vực lân cận';
-  }
-
-  String _extractCityFromAddress(String address) {
-    final parts = address.split(',').map((e) => e.trim()).toList();
-    if (parts.isNotEmpty) {
-      return parts.last;
-    }
-    return 'Việt Nam';
-  }
 
   Future<Map<String, String>> _reverseGeocode(double lat, double lng) async {
     try {

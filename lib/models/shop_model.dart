@@ -68,4 +68,45 @@ class Shop {
       distanceKm: distanceKm ?? this.distanceKm,
     );
   }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'name': name,
+      'address': address,
+      'district': district,
+      'city': city,
+      'latitude': latitude,
+      'longitude': longitude,
+      'rating': rating,
+      'reviewCount': reviewCount,
+      'machineModel': machineModel,
+      'stringerCert': stringerCert,
+      'phone': phone,
+      'openHours': openHours,
+      'imageUrl': imageUrl,
+      'distanceKm': distanceKm,
+    };
+  }
+
+  factory Shop.fromMap(Map<String, dynamic> map, {String? docId}) {
+    return Shop(
+      id: docId ?? map['id']?.toString() ?? '',
+      name: map['name']?.toString() ?? '',
+      address: map['address']?.toString() ?? '',
+      district: map['district']?.toString() ?? '',
+      city: map['city']?.toString() ?? 'TP. Hồ Chí Minh',
+      latitude: (map['latitude'] as num?)?.toDouble() ?? 0.0,
+      longitude: (map['longitude'] as num?)?.toDouble() ?? 0.0,
+      rating: (map['rating'] as num?)?.toDouble() ?? 4.8,
+      reviewCount: (map['reviewCount'] as num?)?.toInt() ?? 50,
+      machineModel: map['machineModel']?.toString() ?? 'Máy điện tử Yonex Precision 9.0 Pro',
+      stringerCert: map['stringerCert']?.toString() ?? 'Kỹ thuật viên đan 4 nút chứng nhận Yonex / BWF',
+      phone: map['phone']?.toString() ?? '+84 908 123 456',
+      openHours: map['openHours']?.toString() ?? '08:00 - 21:30 (Cả tuần)',
+      imageUrl: map['imageUrl']?.toString() ?? '',
+      distanceKm: (map['distanceKm'] as num?)?.toDouble() ?? 1.0,
+    );
+  }
 }
+
