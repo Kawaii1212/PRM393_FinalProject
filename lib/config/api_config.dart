@@ -1,4 +1,4 @@
-import '../firebase_options.dart';
+﻿import '../firebase_options.dart';
 
 /// Cấu hình API cho dịch vụ Bản đồ & Tìm kiếm Địa điểm (Google Places API).
 ///
@@ -28,8 +28,8 @@ class ApiConfig {
     return DefaultFirebaseOptions.android.apiKey;
   }
 
-  /// Bán kính tìm kiếm cửa hàng cầu lông xung quanh vị trí người dùng (mét)
-  static const double searchRadiusMeters = 8000.0; // 8 km
+  /// Bán kính tìm kiếm cửa hàng cầu lông tối đa xung quanh vị trí người dùng (mét)
+  static const double searchRadiusMeters = 20000.0; // 20 km
 
   /// Từ khóa tìm kiếm mặc định gửi lên Google Places API
   static const String defaultBadmintonShopQuery =

@@ -1,4 +1,4 @@
-class ChatMessage {
+﻿class ChatMessage {
   final String id;
   final String senderId;
   final String text;

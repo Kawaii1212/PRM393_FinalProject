@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/racket_provider.dart';
 import '../../providers/shop_provider.dart';
@@ -33,7 +33,10 @@ class HomeDashboardScreen extends StatelessWidget {
 
     final rackets = racketProvider.allRackets;
     final alertRackets = racketProvider.racketsNeedingRestring;
-    final shops = shopProvider.shops;
+    // Trang chủ chỉ hiển thị mặc định các tiệm đan vợt trong bán kính 2 km
+    final shops = shopProvider.shops
+        .where((s) => s.distanceKm <= 2.0)
+        .toList();
 
     return Scaffold(
       appBar: AppBar(
@@ -468,16 +471,47 @@ class HomeDashboardScreen extends StatelessWidget {
                 ),
             const SizedBox(height: 18),
 
-            // Section: Cửa Hàng Gợi Ý Gần Bạn
+            // Section: Cửa Hàng Gợi Ý Gần Bạn (Bán kính 2 km)
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  'Tiệm Đan Vợt Uy Tín Gần Bạn',
-                  style: TextStyle(
-                    color: AppTheme.textPrimary,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
+                Expanded(
+                  child: Row(
+                    children: [
+                      const Flexible(
+                        child: Text(
+                          'Tiệm Đan Vợt Uy Tín Gần Bạn',
+                          style: TextStyle(
+                            color: AppTheme.textPrimary,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppTheme.primary.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: AppTheme.primary.withOpacity(0.4),
+                          ),
+                        ),
+                        child: const Text(
+                          '≤ 2 km',
+                          style: TextStyle(
+                            color: AppTheme.primaryDark,
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 TextButton(
@@ -501,7 +535,7 @@ class HomeDashboardScreen extends StatelessWidget {
                   border: Border.all(color: AppTheme.border),
                 ),
                 child: const Text(
-                  'Chưa tìm thấy cửa hàng nào gần vị trí hiện tại.',
+                  'Chưa tìm thấy cửa hàng nào trong bán kính 2 km gần vị trí hiện tại.',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: AppTheme.textSecondary),
                 ),

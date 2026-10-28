@@ -1,4 +1,4 @@
-enum NotificationType {
+﻿enum NotificationType {
   tensionAlert,
   orderStatus,
   promo,

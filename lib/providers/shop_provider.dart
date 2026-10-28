@@ -1,4 +1,4 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -849,6 +849,129 @@ class ShopProvider with ChangeNotifier {
     }
     return list;
   }
+
+
+  /// Truy vấn dự phòng các cửa hàng cầu lông/thể thao thực tế quanh vị trí người dùng
+  /// khi Google Cloud API Key chưa được kích hoạt thanh toán (Billing)
+  Future<List<Shop>> _fetchRealPOIShopsFallback(LatLng center) async {
+    const Distance distanceCalc = Distance();
+
+    try {
+      final radius = ApiConfig.searchRadiusMeters.toInt();
+      final query = '''
+[out:json][timeout:6];
+(
+  node["shop"="sports"](around:$radius,${center.latitude},${center.longitude});
+  way["shop"="sports"](around:$radius,${center.latitude},${center.longitude});
+  node["sport"="badminton"](around:$radius,${center.latitude},${center.longitude});
+  way["sport"="badminton"](around:$radius,${center.latitude},${center.longitude});
+);
+out center 40;
+''';
+      final res = await http
+          .post(
+            Uri.parse('https://overpass-api.de/api/interpreter'),
+            body: {'data': query},
+          )
+          .timeout(const Duration(seconds: 6));
+
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        final rawElements = data['elements'] as List<dynamic>? ?? [];
+        // Sắp xếp ưu tiên các điểm gần vị trí người dùng nhất (đặc biệt trong bán kính 2 km)
+        final elementsWithDist = <Map<String, dynamic>>[];
+        for (final raw in rawElements) {
+          final el = raw as Map<String, dynamic>;
+          final tags = el['tags'] as Map<String, dynamic>? ?? {};
+          final rawName = tags['name']?.toString().trim();
+          if (rawName == null || rawName.isEmpty) continue;
+
+          double? lat = (el['lat'] as num?)?.toDouble();
+          double? lng = (el['lon'] as num?)?.toDouble();
+          if (lat == null || lng == null) {
+            final c = el['center'] as Map<String, dynamic>?;
+            lat = (c?['lat'] as num?)?.toDouble();
+            lng = (c?['lon'] as num?)?.toDouble();
+          }
+          if (lat == null || lng == null) continue;
+
+          final distKm = distanceCalc.as(
+            LengthUnit.Kilometer,
+            center,
+            LatLng(lat, lng),
+          );
+          elementsWithDist.add({
+            'el': el,
+            'lat': lat,
+            'lng': lng,
+            'distKm': distKm,
+          });
+        }
+        elementsWithDist.sort(
+          (a, b) => (a['distKm'] as double).compareTo(b['distKm'] as double),
+        );
+
+        final List<Shop> poiShops = [];
+
+        for (int i = 0; i < elementsWithDist.length && poiShops.length < 15; i++) {
+          final item = elementsWithDist[i];
+          final el = item['el'] as Map<String, dynamic>;
+          final lat = item['lat'] as double;
+          final lng = item['lng'] as double;
+          final distKm = item['distKm'] as double;
+          final tags = el['tags'] as Map<String, dynamic>? ?? {};
+          final rawName = tags['name']!.toString().trim();
+
+          final street = tags['addr:street']?.toString() ?? '';
+          final houseNum = tags['addr:housenumber']?.toString() ?? '';
+          final district = tags['addr:district']?.toString() ??
+              tags['addr:suburb']?.toString() ??
+              'Khu vực lân cận';
+          final city = tags['addr:city']?.toString() ?? 'Việt Nam';
+
+          String address = [houseNum, street, district]
+              .where((s) => s.isNotEmpty)
+              .join(' ')
+              .trim();
+          if (address.isEmpty || address == district) {
+            final geo = await _reverseGeocode(lat, lng);
+            address = geo['shortAddress'] ?? 'Gần $_userAreaLabel';
+          }
+
+          poiShops.add(
+            Shop(
+              id: 'poi_${el['id'] ?? i}',
+              name: rawName,
+              address: address,
+              district: district,
+              city: city,
+              latitude: lat,
+              longitude: lng,
+              rating: 0.0,
+              reviewCount: 0,
+              machineModel: 'Chưa cập nhật thông tin máy đan',
+              stringerCert: 'Chưa cập nhật chứng chỉ thợ đan',
+              phone: tags['phone']?.toString() ??
+                  tags['contact:phone']?.toString() ??
+                  'Chưa cập nhật',
+              openHours: tags['opening_hours']?.toString() ?? 'Chưa cập nhật',
+              imageUrl: '',
+              distanceKm: double.parse(distKm.toStringAsFixed(1)),
+            ),
+          );
+        }
+
+        if (poiShops.isNotEmpty) {
+          return poiShops;
+        }
+      }
+    } catch (e) {
+      debugPrint('Real POI fallback warning: $e');
+    }
+    return [];
+  }
+
+
 
   String _extractDistrictFromAddress(String address) {
     final parts = address.split(',').map((e) => e.trim()).toList();
