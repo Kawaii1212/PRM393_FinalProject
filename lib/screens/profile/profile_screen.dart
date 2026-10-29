@@ -439,9 +439,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     color: AppTheme.primary,
                   ),
                 ),
-                validator: (v) => (v == null || v.trim().isEmpty)
-                    ? 'Không được để trống SĐT'
-                    : null,
+                validator: (v) {
+                  if (v == null || v.trim().isEmpty) {
+                    return 'Không được để trống số điện thoại';
+                  }
+                  final clean = v.trim();
+                  if (!RegExp(r'^0\d{9}$').hasMatch(clean)) {
+                    return 'Số điện thoại phải bắt đầu bằng số 0 và có đủ 10 chữ số';
+                  }
+                  return null;
+                },
               ),
               if (user.role == UserRole.player) ...[
                 const SizedBox(height: 14),
@@ -491,10 +498,62 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 const SizedBox(height: 14),
               ],
 
-              // Sổ tay chấn thương & Phục hồi chức năng (Dành cho Player)
+              // Sổ tay chấn thương & Phục hồi chức năng (Dành cho Player đã đăng nhập)
               if (user.role == UserRole.player) ...[
                 OutlinedButton.icon(
                   onPressed: () {
+                    final isGuest = context.read<AuthProvider>().isGuest;
+                    if (isGuest) {
+                      showDialog(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          backgroundColor: AppTheme.surface,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                          title: const Row(
+                            children: [
+                              Icon(Icons.lock_outline_rounded, color: AppTheme.accent),
+                              SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'Yêu Cầu Đăng Nhập',
+                                  style: TextStyle(
+                                    color: AppTheme.textPrimary,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          content: const Text(
+                            'Chức năng Sổ tay chấn thương & Phục hồi chỉ dành cho người dùng đã đăng nhập tài khoản. Vui lòng đăng nhập hoặc tạo tài khoản để sử dụng!',
+                            style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(ctx),
+                              child: const Text('Để sau', style: TextStyle(color: AppTheme.textSecondary)),
+                            ),
+                            ElevatedButton(
+                              onPressed: () {
+                                Navigator.pop(ctx);
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (_) => const LoginRegisterScreen()),
+                                );
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppTheme.primary,
+                                foregroundColor: Colors.black,
+                              ),
+                              child: const Text('Đăng nhập ngay'),
+                            ),
+                          ],
+                        ),
+                      );
+                      return;
+                    }
+
                     Navigator.push(
                       context,
                       MaterialPageRoute(

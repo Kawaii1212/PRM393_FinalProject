@@ -94,11 +94,22 @@ enum PainSeverity {
   String get label {
     switch (this) {
       case PainSeverity.mild:
-        return 'Mức độ Nhẹ (Cấp 1)';
+        return 'Nhẹ (Cấp 1)';
       case PainSeverity.moderate:
-        return 'Mức độ Vừa (Cấp 2)';
+        return 'Vừa (Cấp 2)';
       case PainSeverity.severe:
         return 'Nguy cơ Cao (Cấp 3 - Cảnh báo đỏ)';
+    }
+  }
+
+  String get shortLabel {
+    switch (this) {
+      case PainSeverity.mild:
+        return 'Nhẹ (Cấp 1)';
+      case PainSeverity.moderate:
+        return 'Vừa (Cấp 2)';
+      case PainSeverity.severe:
+        return 'Cấp 3 - Đỏ';
     }
   }
 

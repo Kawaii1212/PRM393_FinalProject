@@ -54,21 +54,18 @@ class _InjuryResultScreenState extends State<InjuryResultScreen>
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Đã lưu kết quả vào Sổ Tay Chấn Thương!'),
+        const SnackBar(
+          content: Text('Đã lưu thành công vào Sổ Tay Chấn Thương!'),
           backgroundColor: AppTheme.primaryDark,
-          action: SnackBarAction(
-            label: 'Xem Sổ Tay',
-            textColor: Colors.white,
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const InjuryHistoryScreen(),
-                ),
-              );
-            },
-          ),
+          duration: Duration(seconds: 2),
+        ),
+      );
+
+      // Đóng màn hình kết quả và chuyển ngay tới Sổ Tay Chấn Thương
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const InjuryHistoryScreen(),
         ),
       );
     } catch (_) {

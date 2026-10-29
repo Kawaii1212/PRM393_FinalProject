@@ -1,4 +1,4 @@
-﻿import 'dart:io';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -1006,8 +1006,17 @@ class _ShopOwnerDashboardScreenState extends State<ShopOwnerDashboardScreen> {
                   const SizedBox(height: 10),
                   TextFormField(
                     controller: phoneCtrl,
+                    keyboardType: TextInputType.phone,
                     decoration: const InputDecoration(labelText: 'Số điện thoại hotline *'),
-                    validator: (v) => (v == null || v.trim().isEmpty) ? 'Vui lòng nhập số điện thoại' : null,
+                    validator: (v) {
+                      if (v == null || v.trim().isEmpty) {
+                        return 'Vui lòng nhập số điện thoại';
+                      }
+                      if (!RegExp(r'^0\d{9}$').hasMatch(v.trim())) {
+                        return 'Số điện thoại phải bắt đầu bằng số 0 và có đủ 10 chữ số';
+                      }
+                      return null;
+                    },
                   ),
                   const SizedBox(height: 10),
                   TextFormField(
@@ -1409,11 +1418,32 @@ class _ShopOwnerDashboardScreenState extends State<ShopOwnerDashboardScreen> {
                 children: [
                   const Text('Khởi Tạo Hồ Sơ Cửa Hàng Mới', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 14),
-                  TextFormField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Tên shop *')),
+                  TextFormField(
+                    controller: nameCtrl,
+                    decoration: const InputDecoration(labelText: 'Tên shop *'),
+                    validator: (v) => (v == null || v.trim().isEmpty) ? 'Vui lòng nhập tên shop' : null,
+                  ),
                   const SizedBox(height: 10),
-                  TextFormField(controller: phoneCtrl, decoration: const InputDecoration(labelText: 'Hotline *')),
+                  TextFormField(
+                    controller: phoneCtrl,
+                    keyboardType: TextInputType.phone,
+                    decoration: const InputDecoration(labelText: 'Hotline *'),
+                    validator: (v) {
+                      if (v == null || v.trim().isEmpty) {
+                        return 'Vui lòng nhập số Hotline shop';
+                      }
+                      if (!RegExp(r'^0\d{9}$').hasMatch(v.trim())) {
+                        return 'Số điện thoại phải bắt đầu bằng số 0 và có đủ 10 chữ số';
+                      }
+                      return null;
+                    },
+                  ),
                   const SizedBox(height: 10),
-                  TextFormField(controller: addressCtrl, decoration: const InputDecoration(labelText: 'Địa chỉ shop *')),
+                  TextFormField(
+                    controller: addressCtrl,
+                    decoration: const InputDecoration(labelText: 'Địa chỉ shop *'),
+                    validator: (v) => (v == null || v.trim().isEmpty) ? 'Vui lòng nhập địa chỉ shop' : null,
+                  ),
                   const SizedBox(height: 10),
                   TextFormField(controller: machineCtrl, decoration: const InputDecoration(labelText: 'Dòng máy đan')),
                   const SizedBox(height: 10),
@@ -1423,6 +1453,7 @@ class _ShopOwnerDashboardScreenState extends State<ShopOwnerDashboardScreen> {
                     width: double.infinity,
                     child: ElevatedButton(
                       onPressed: () async {
+                        if (!formKey.currentState!.validate()) return;
                         final shopProvider = context.read<ShopProvider>();
                         final newShop = Shop(
                           id: 'shop_${DateTime.now().millisecondsSinceEpoch}',

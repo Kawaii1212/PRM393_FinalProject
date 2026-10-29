@@ -1,9 +1,10 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/notification_model.dart';
+import '../models/racket_model.dart';
 
 class NotificationProvider with ChangeNotifier {
   static const String _prefSystemNotifsKey = 'gearsports_system_notifications';
@@ -118,6 +119,34 @@ class NotificationProvider with ChangeNotifier {
     );
     _notifications.insert(0, notif);
     notifyListeners();
+  }
+
+  /// Tự động kiểm tra và sinh cảnh báo cho những cây vợt cần thay cước
+  void syncRacketTensionAlerts(List<Racket> rackets) {
+    bool hasChange = false;
+    for (final racket in rackets) {
+      if (racket.needsRestring) {
+        final alreadyExists = _notifications.any(
+          (n) => n.type == NotificationType.tensionAlert && n.targetRacketId == racket.id,
+        );
+        if (!alreadyExists) {
+          final notif = AppNotification(
+            id: 'alert_${racket.id}_${DateTime.now().millisecondsSinceEpoch}',
+            title: '🏸 Cảnh báo: Vợt ${racket.brand} ${racket.modelName} cần đan lại!',
+            message: 'Cước đã chùng -${racket.tensionLossPercent}% sau ${racket.daysSinceStrung} ngày (${racket.sessionsPlayed} buổi). Hãy đan lại để phòng tránh chấn thương cổ tay!',
+            type: NotificationType.tensionAlert,
+            timestamp: DateTime.now(),
+            targetRacketId: racket.id,
+            isRead: false,
+          );
+          _notifications.insert(0, notif);
+          hasChange = true;
+        }
+      }
+    }
+    if (hasChange) {
+      notifyListeners();
+    }
   }
 
   /// Dành cho Admin: Phát thông báo toàn hệ thống và lưu lên Cloud Firestore (`system_notifications`)

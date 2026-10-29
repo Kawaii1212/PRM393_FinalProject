@@ -1,8 +1,9 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../models/notification_model.dart';
 import '../../providers/notification_provider.dart';
+import '../../providers/racket_provider.dart';
 import '../../theme/app_theme.dart';
 import '../gear/gear_detail_screen.dart';
 
@@ -14,17 +15,27 @@ class NotificationsScreen extends StatefulWidget {
 }
 
 class _NotificationsScreenState extends State<NotificationsScreen> {
-  int _selectedFilter = 0; // 0: All, 1: Tension alerts, 2: Order status
+  int _selectedFilter = 0; // 0: All, 1: Tension alerts
   final _dateFormat = DateFormat('dd/MM HH:mm');
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final rackets = context.read<RacketProvider>().allRackets;
+      context.read<NotificationProvider>().syncRacketTensionAlerts(rackets);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final notifProvider = context.watch<NotificationProvider>();
-    final allNotifs = notifProvider.notifications;
+    final allNotifs = notifProvider.notifications
+        .where((n) => n.type != NotificationType.orderStatus)
+        .toList();
 
     final filteredNotifs = allNotifs.where((n) {
       if (_selectedFilter == 1) return n.type == NotificationType.tensionAlert;
-      if (_selectedFilter == 2) return n.type == NotificationType.orderStatus;
       return true;
     }).toList();
 
@@ -45,16 +56,17 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       ),
       body: Column(
         children: [
-          // Filter Tabs
+          // Filter Tabs (Bỏ mục đơn đặt lịch theo yêu cầu)
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Row(
               children: [
                 _filterChip(0, 'Tất cả (${allNotifs.length})'),
                 const SizedBox(width: 8),
-                _filterChip(1, 'Cảnh Báo Vợt'),
-                const SizedBox(width: 8),
-                _filterChip(2, 'Đơn Đặt Lịch'),
+                _filterChip(
+                  1,
+                  'Cảnh Báo Vợt (${allNotifs.where((n) => n.type == NotificationType.tensionAlert).length})',
+                ),
               ],
             ),
           ),

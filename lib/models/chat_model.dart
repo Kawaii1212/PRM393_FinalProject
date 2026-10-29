@@ -50,6 +50,7 @@ class ChatMessage {
 
 class ChatThread {
   final String id;
+  final String userId;
   final String shopId;
   final String shopName;
   final String shopAvatar;
@@ -60,6 +61,7 @@ class ChatThread {
 
   ChatThread({
     required this.id,
+    this.userId = '',
     required this.shopId,
     required this.shopName,
     required this.shopAvatar,
@@ -72,6 +74,7 @@ class ChatThread {
   Map<String, dynamic> toMap() {
     return {
       'id': id,
+      'userId': userId,
       'shopId': shopId,
       'shopName': shopName,
       'shopAvatar': shopAvatar,
@@ -85,6 +88,7 @@ class ChatThread {
   factory ChatThread.fromMap(Map<String, dynamic> map) {
     return ChatThread(
       id: map['id']?.toString() ?? '',
+      userId: map['userId']?.toString() ?? '',
       shopId: map['shopId']?.toString() ?? '',
       shopName: map['shopName']?.toString() ?? '',
       shopAvatar: map['shopAvatar']?.toString() ?? '',

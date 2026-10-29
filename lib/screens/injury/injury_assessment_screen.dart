@@ -313,16 +313,19 @@ class _InjuryAssessmentScreenState extends State<InjuryAssessmentScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        'Điểm đau hiện tại: ${_painScore.round()}/10',
-                        style: const TextStyle(
-                          color: AppTheme.textPrimary,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 15,
+                      Flexible(
+                        child: Text(
+                          'Điểm đau hiện tại: ${_painScore.round()}/10',
+                          style: const TextStyle(
+                            color: AppTheme.textPrimary,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
                         ),
                       ),
+                      const SizedBox(width: 8),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
                           color: PainSeverity.fromScore(_painScore.round()).color.withOpacity(0.2),
                           borderRadius: BorderRadius.circular(8),
@@ -331,7 +334,7 @@ class _InjuryAssessmentScreenState extends State<InjuryAssessmentScreen> {
                           ),
                         ),
                         child: Text(
-                          PainSeverity.fromScore(_painScore.round()).label,
+                          PainSeverity.fromScore(_painScore.round()).shortLabel,
                           style: TextStyle(
                             color: PainSeverity.fromScore(_painScore.round()).color,
                             fontWeight: FontWeight.bold,

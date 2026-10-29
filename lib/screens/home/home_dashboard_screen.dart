@@ -19,6 +19,7 @@ import '../profile/profile_screen.dart';
 import '../sport/sport_selection_screen.dart';
 import '../injury/injury_assessment_screen.dart';
 import '../injury/injury_history_screen.dart';
+import '../auth/login_register_screen.dart';
 
 class HomeDashboardScreen extends StatelessWidget {
   final Function(int)? onNavigateTab;
@@ -375,6 +376,16 @@ class HomeDashboardScreen extends StatelessWidget {
                   label: 'Thêm Vợt',
                   color: AppTheme.primaryDark,
                   onTap: () {
+                    final authProv = context.read<AuthProvider>();
+                    final racketProv = context.read<RacketProvider>();
+                    if (authProv.isGuest && racketProv.allRackets.length >= 3) {
+                      _openFeatureOrPromptLogin(
+                        context,
+                        screen: const SizedBox(),
+                        featureName: 'Thêm hơn 3 cây vợt vào Gara',
+                      );
+                      return;
+                    }
                     Navigator.push(
                       context,
                       MaterialPageRoute(
@@ -389,11 +400,10 @@ class HomeDashboardScreen extends StatelessWidget {
                   label: 'Bác Sĩ Thể Thao',
                   color: AppTheme.accent,
                   onTap: () {
-                    Navigator.push(
+                    _openFeatureOrPromptLogin(
                       context,
-                      MaterialPageRoute(
-                        builder: (_) => const InjuryAssessmentScreen(),
-                      ),
+                      screen: const InjuryAssessmentScreen(),
+                      featureName: 'Bác sĩ thể thao & Chuẩn đoán chấn thương',
                     );
                   },
                 ),
@@ -567,6 +577,15 @@ class HomeDashboardScreen extends StatelessWidget {
                   },
                   onChatTap: () {
                     if (!s.isVerifiedPartner) return;
+                    final authProv = context.read<AuthProvider>();
+                    if (authProv.isGuest) {
+                      _openFeatureOrPromptLogin(
+                        context,
+                        screen: const SizedBox(),
+                        featureName: 'Tin nhắn trao đổi với Shop',
+                      );
+                      return;
+                    }
                     final chatProvider = context.read<ChatProvider>();
                     final thread = chatProvider.getOrCreateThreadForShop(
                       s.id,
@@ -586,6 +605,69 @@ class HomeDashboardScreen extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+
+  void _openFeatureOrPromptLogin(
+    BuildContext context, {
+    required Widget screen,
+    required String featureName,
+  }) {
+    final authProv = context.read<AuthProvider>();
+    if (authProv.isGuest) {
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: AppTheme.surface,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          title: const Row(
+            children: [
+              Icon(Icons.lock_outline_rounded, color: AppTheme.accent),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Yêu Cầu Đăng Nhập',
+                  style: TextStyle(
+                    color: AppTheme.textPrimary,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: Text(
+            'Chức năng $featureName chỉ dành cho người dùng đã đăng nhập tài khoản. Vui lòng đăng nhập hoặc tạo tài khoản để sử dụng!',
+            style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Để sau', style: TextStyle(color: AppTheme.textSecondary)),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const LoginRegisterScreen()),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primary,
+                foregroundColor: Colors.black,
+              ),
+              child: const Text('Đăng nhập ngay'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => screen),
     );
   }
 
@@ -655,11 +737,10 @@ class HomeDashboardScreen extends StatelessWidget {
               children: [
                 ElevatedButton(
                   onPressed: () {
-                    Navigator.push(
+                    _openFeatureOrPromptLogin(
                       context,
-                      MaterialPageRoute(
-                        builder: (_) => const InjuryHistoryScreen(),
-                      ),
+                      screen: const InjuryHistoryScreen(),
+                      featureName: 'Sổ tay chấn thương',
                     );
                   },
                   style: ElevatedButton.styleFrom(
@@ -673,13 +754,12 @@ class HomeDashboardScreen extends StatelessWidget {
                 const SizedBox(width: 10),
                 OutlinedButton(
                   onPressed: () {
-                    Navigator.push(
+                    _openFeatureOrPromptLogin(
                       context,
-                      MaterialPageRoute(
-                        builder: (_) => InjuryAssessmentScreen(
-                          initialBodyPart: activeInjury.bodyPart,
-                        ),
+                      screen: InjuryAssessmentScreen(
+                        initialBodyPart: activeInjury.bodyPart,
                       ),
+                      featureName: 'Bác sĩ thể thao & Tái khám chấn thương',
                     );
                   },
                   style: OutlinedButton.styleFrom(
@@ -746,11 +826,10 @@ class HomeDashboardScreen extends StatelessWidget {
           ),
           TextButton(
             onPressed: () {
-              Navigator.push(
+              _openFeatureOrPromptLogin(
                 context,
-                MaterialPageRoute(
-                  builder: (_) => const InjuryAssessmentScreen(),
-                ),
+                screen: const InjuryAssessmentScreen(),
+                featureName: 'Bác sĩ thể thao & Chuẩn đoán chấn thương',
               );
             },
             child: const Text(

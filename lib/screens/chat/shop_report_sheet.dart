@@ -3,8 +3,8 @@ import 'package:provider/provider.dart';
 import '../../models/shop_report_model.dart';
 import '../../models/notification_model.dart';
 import '../../providers/auth_provider.dart';
-import '../../providers/chat_provider.dart';
 import '../../providers/notification_provider.dart';
+import '../../providers/chat_provider.dart';
 import '../../providers/shop_provider.dart';
 import '../../theme/app_theme.dart';
 
@@ -57,7 +57,6 @@ class _ShopReportSheetState extends State<ShopReportSheet> {
   ];
 
   late String _selectedReason;
-  bool _attachChatHistory = true;
   bool _confirmedTruth = true;
   bool _isSubmitting = false;
 
@@ -88,24 +87,9 @@ class _ShopReportSheetState extends State<ShopReportSheet> {
     setState(() => _isSubmitting = true);
 
     final authProv = context.read<AuthProvider>();
-    final chatProv = context.read<ChatProvider>();
     final notifProv = context.read<NotificationProvider>();
+    final chatProv = context.read<ChatProvider>();
     final currentUser = authProv.currentUser;
-
-    // Collect chat evidence if requested and thread exists
-    String? evidence;
-    if (_attachChatHistory && widget.threadId != null) {
-      final thread = chatProv.getThread(widget.threadId!);
-      if (thread != null && thread.messages.isNotEmpty) {
-        final recent = thread.messages.length > 6
-            ? thread.messages.sublist(thread.messages.length - 6)
-            : thread.messages;
-        evidence = recent.map((m) {
-          final sender = m.isFromUser ? 'Khách hàng' : 'Shop';
-          return '[$sender - ${m.timestamp.hour}:${m.timestamp.minute.toString().padLeft(2, '0')}]: ${m.text}';
-        }).join('\n');
-      }
-    }
 
     final reportId = 'report_${DateTime.now().millisecondsSinceEpoch}';
     final report = ShopReport(
@@ -117,7 +101,7 @@ class _ShopReportSheetState extends State<ShopReportSheet> {
       reporterEmail: currentUser?.email ?? 'player@gearsports.com',
       reason: _selectedReason,
       description: _descController.text.trim(),
-      chatEvidence: evidence,
+      chatEvidence: null,
       createdAt: DateTime.now(),
       status: 'pending',
     );
@@ -482,31 +466,6 @@ class _ShopReportSheetState extends State<ShopReportSheet> {
                   },
                 ),
                 const SizedBox(height: 14),
-
-                // Chat evidence checkbox
-                if (widget.threadId != null) ...[
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: AppTheme.background,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: AppTheme.border),
-                    ),
-                    child: CheckboxListTile(
-                      contentPadding: EdgeInsets.zero,
-                      value: _attachChatHistory,
-                      onChanged: (val) => setState(() => _attachChatHistory = val ?? true),
-                      title: const Text(
-                        'Đính kèm trích xuất tin nhắn trao đổi gần nhất làm bằng chứng cho Admin',
-                        style: TextStyle(fontSize: 12, color: AppTheme.textPrimary),
-                      ),
-                      activeColor: AppTheme.primary,
-                      controlAffinity: ListTileControlAffinity.leading,
-                      dense: true,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                ],
 
                 // Commitment checkbox
                 Container(

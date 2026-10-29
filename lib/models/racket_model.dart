@@ -1,4 +1,4 @@
-﻿import 'tension_log_model.dart';
+import 'tension_log_model.dart';
 
 class Racket {
   final String id;
@@ -47,32 +47,32 @@ class Racket {
 
   /// Number of days since last stringing
   int get daysSinceStrung {
-    if (strungDate == null) return 0;
+    if (strungDate == null || tensionLogs.isEmpty) return 0;
     return DateTime.now().difference(strungDate!).inDays;
   }
 
+  /// Kiểm tra vợt đã có nhật ký đan cước chưa
+  bool get hasTensionLog => tensionLogs.isNotEmpty && initialTensionLbs > 0;
+
   /// Calculates tension loss percentage based on days and play sessions.
-  /// Standard badminton tension loss curve: ~8-12% in first 48h, then ~0.3%/day or ~1.5%/session.
+  /// Công thức chuẩn: 0.2% cho mỗi ngày trôi qua và 0.7% cho mỗi buổi đánh cầu.
   double get tensionLossPercent {
-    if (initialTensionLbs <= 0 || strungDate == null) return 0.0;
+    if (!hasTensionLog || strungDate == null) return 0.0;
     final days = daysSinceStrung;
-    double loss = 0.0;
-    if (days >= 1) loss += 8.0; // initial settling loss
-    loss += (days * 0.25) + (sessionsPlayed * 1.2);
-    if (loss > 45.0) loss = 45.0; // max cap for string still intact
-    return double.parse(loss.toStringAsFixed(1));
+    final loss = (days * 0.2) + (sessionsPlayed * 0.7);
+    return double.parse(loss.clamp(0.0, 100.0).toStringAsFixed(1));
   }
 
   /// Estimated current real tension
   double get estimatedCurrentTension {
-    if (initialTensionLbs <= 0) return 0.0;
+    if (!hasTensionLog) return 0.0;
     final current = initialTensionLbs * (1.0 - (tensionLossPercent / 100.0));
-    return double.parse(current.toStringAsFixed(1));
+    return double.parse(current.clamp(0.0, initialTensionLbs).toStringAsFixed(1));
   }
 
-  /// Check if the string needs to be replaced (over 40 days, or >20% tension loss)
+  /// Check if the string needs to be replaced (over 45 days, or >20% tension loss)
   bool get needsRestring {
-    if (initialTensionLbs <= 0) return true;
+    if (!hasTensionLog) return false;
     return tensionLossPercent >= 20.0 || daysSinceStrung >= 45;
   }
 
