@@ -1,4 +1,4 @@
-// File tự động chuyển đổi từ mapHCM.csv
+﻿// File tự động chuyển đổi từ mapHCM.csv
 import '../models/shop_model.dart';
 
 class HcmShopData {

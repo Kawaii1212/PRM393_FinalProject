@@ -1,4 +1,4 @@
-// File tự động chuyển đổi từ google.csv
+﻿// File tự động chuyển đổi từ google.csv
 import '../models/shop_model.dart';
 
 class CsvShopData {

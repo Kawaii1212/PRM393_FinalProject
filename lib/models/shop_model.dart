@@ -1,4 +1,4 @@
-﻿class Shop {
+class Shop {
   final String id;
   final String name;
   final String address;
@@ -45,7 +45,16 @@
   bool get isApproved => status == 'approved';
   bool get isDisabled => status == 'disabled';
 
+  /// Shop đã đăng ký tài khoản trên app bởi Chủ Shop (có tài khoản xác thực)
+  bool get isRegisteredOnApp => ownerUid != null && ownerUid!.isNotEmpty;
+
+  /// Shop đối tác chính thức đã đăng ký trên app và được Admin phê duyệt hoạt động
+  bool get isVerifiedPartner => isRegisteredOnApp && isApproved;
+
   String get statusDisplayName {
+    if (isVerifiedPartner) {
+      return 'Được phê duyệt';
+    }
     switch (status) {
       case 'pending':
         return 'Chờ phê duyệt';
@@ -53,7 +62,7 @@
         return 'Đã vô hiệu hóa';
       case 'approved':
       default:
-        return 'Đang hoạt động';
+        return isRegisteredOnApp ? 'Đang hoạt động' : 'Đang hoạt động (Google Maps)';
     }
   }
 

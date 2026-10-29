@@ -37,6 +37,19 @@ class _ShopDetailScreenState extends State<ShopDetailScreen>
   }
 
   void _openChatWithInquiry(Shop shop, Product item) {
+    if (!shop.isVerifiedPartner) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            shop.isRegisteredOnApp
+                ? 'Cửa hàng này đang chờ Admin phê duyệt nên chưa thể nhận tin nhắn!'
+                : 'Cửa hàng này là địa điểm Google Maps chưa đăng ký tài khoản trên app. Chỉ có thể nhắn tin với Shop đối tác đã được Admin phê duyệt.',
+          ),
+          backgroundColor: AppTheme.danger,
+        ),
+      );
+      return;
+    }
     final chatProvider = context.read<ChatProvider>();
     final thread = chatProvider.getOrCreateThreadForShop(
       shop.id,
@@ -53,7 +66,10 @@ class _ShopDetailScreenState extends State<ShopDetailScreen>
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => ChatConversationScreen(threadId: thread.id),
+        builder: (_) => ChatConversationScreen(
+          threadId: thread.id,
+          shopId: shop.id,
+        ),
       ),
     );
   }
@@ -137,6 +153,71 @@ class _ShopDetailScreenState extends State<ShopDetailScreen>
       );
     }
 
+    // Với các shop có sẵn trên database (chưa đăng ký trên app), chỉ có nút mở Google Maps
+    if (!shop.isVerifiedPartner) {
+      return Scaffold(
+        appBar: AppBar(title: Text(shop.name)),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primary.withOpacity(0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.map_rounded, size: 54, color: AppTheme.primary),
+                ),
+                const SizedBox(height: 18),
+                Text(
+                  shop.name,
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '${shop.address} • Cách bạn ${shop.distanceKm} km',
+                  style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 18),
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: AppTheme.surfaceLight,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: AppTheme.border),
+                  ),
+                  child: const Text(
+                    'Đây là địa điểm tham khảo được ghi nhận từ dữ liệu Google Maps. Cửa hàng chưa có chủ shop đăng ký gian hàng trên ứng dụng nên chưa thể xem sản phẩm và dịch vụ trực tuyến.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 12.5, color: AppTheme.textMuted, height: 1.4),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () => _openDirections(shop),
+                    icon: const Icon(Icons.directions_rounded, color: Colors.black),
+                    label: const Text('Dẫn Đường Trực Tiếp Sang Google Maps 🗺️', style: TextStyle(fontWeight: FontWeight.bold)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primary,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     final services = shopProvider.getServicesForShop(shop.id);
     final accessories = shopProvider.getAccessoriesForShop(shop.id);
 
@@ -148,6 +229,19 @@ class _ShopDetailScreenState extends State<ShopDetailScreen>
             tooltip: 'Nhắn tin với shop',
             icon: const Icon(Icons.chat_bubble_outline_rounded, color: AppTheme.primary),
             onPressed: () {
+              if (!shop.isVerifiedPartner) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      shop.isRegisteredOnApp
+                          ? 'Cửa hàng này đang chờ Admin phê duyệt nên chưa thể nhận tin nhắn!'
+                          : 'Cửa hàng này là địa điểm Google Maps chưa đăng ký tài khoản trên app. Chỉ có thể nhắn tin với Shop đối tác đã được Admin phê duyệt.',
+                    ),
+                    backgroundColor: AppTheme.danger,
+                  ),
+                );
+                return;
+              }
               final chatProvider = context.read<ChatProvider>();
               final thread = chatProvider.getOrCreateThreadForShop(
                 shop.id,
@@ -157,7 +251,10 @@ class _ShopDetailScreenState extends State<ShopDetailScreen>
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => ChatConversationScreen(threadId: thread.id),
+                  builder: (_) => ChatConversationScreen(
+                    threadId: thread.id,
+                    shopId: shop.id,
+                  ),
                 ),
               );
             },

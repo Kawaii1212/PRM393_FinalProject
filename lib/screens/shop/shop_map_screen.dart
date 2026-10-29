@@ -341,18 +341,19 @@ class _ShopMapScreenState extends State<ShopMapScreen> {
                     ),
                   ),
 
-                  // Marker của các Cửa Hàng Cầu Lông
+                  // Marker của các Cửa Hàng Cầu Lông (Phân biệt Shop Đối tác và Shop Google Maps)
                   for (int i = 0; i < shops.length; i++) ...[
                     () {
                       final shop = shops[i];
                       final isSelected = selectedShop?.id == shop.id;
+                      final isPartner = shop.isVerifiedPartner;
                       final isTop3 = i < 3;
 
                       if (isSelected) {
                         return Marker(
                           point: LatLng(shop.latitude, shop.longitude),
-                          width: 180,
-                          height: 74,
+                          width: 195,
+                          height: 76,
                           child: GestureDetector(
                             onTap: () => _onShopTapped(shop),
                             child: Column(
@@ -364,10 +365,10 @@ class _ShopMapScreenState extends State<ShopMapScreen> {
                                     vertical: 4,
                                   ),
                                   decoration: BoxDecoration(
-                                    color: AppTheme.primary,
+                                    color: isPartner ? AppTheme.primary : AppTheme.surface,
                                     borderRadius: BorderRadius.circular(20),
                                     border: Border.all(
-                                      color: Colors.black,
+                                      color: isPartner ? Colors.black : Colors.blueGrey,
                                       width: 1.5,
                                     ),
                                     boxShadow: const [
@@ -381,17 +382,17 @@ class _ShopMapScreenState extends State<ShopMapScreen> {
                                   child: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      const Icon(
-                                        Icons.sports_tennis_rounded,
-                                        color: Colors.black,
+                                      Icon(
+                                        isPartner ? Icons.verified_rounded : Icons.place_rounded,
+                                        color: isPartner ? Colors.black : Colors.blueGrey,
                                         size: 13,
                                       ),
                                       const SizedBox(width: 4),
                                       Flexible(
                                         child: Text(
-                                          '${shop.name.split('-').first.trim()} (${shop.distanceKm}km)',
-                                          style: const TextStyle(
-                                            color: Colors.black,
+                                          '${isPartner ? "✓ " : ""}${shop.name.split('-').first.trim()} (${shop.distanceKm}km)',
+                                          style: TextStyle(
+                                            color: isPartner ? Colors.black : AppTheme.textPrimary,
                                             fontSize: 11,
                                             fontWeight: FontWeight.bold,
                                           ),
@@ -402,9 +403,9 @@ class _ShopMapScreenState extends State<ShopMapScreen> {
                                     ],
                                   ),
                                 ),
-                                const Icon(
+                                Icon(
                                   Icons.location_on_rounded,
-                                  color: AppTheme.danger,
+                                  color: isPartner ? AppTheme.danger : Colors.blueGrey,
                                   size: 34,
                                 ),
                               ],
@@ -414,7 +415,7 @@ class _ShopMapScreenState extends State<ShopMapScreen> {
                       } else if (isTop3) {
                         return Marker(
                           point: LatLng(shop.latitude, shop.longitude),
-                          width: 140,
+                          width: 145,
                           height: 60,
                           child: GestureDetector(
                             onTap: () => _onShopTapped(shop),
@@ -427,11 +428,13 @@ class _ShopMapScreenState extends State<ShopMapScreen> {
                                     vertical: 3,
                                   ),
                                   decoration: BoxDecoration(
-                                    color: AppTheme.surface.withOpacity(0.95),
+                                    color: isPartner
+                                        ? AppTheme.primary.withOpacity(0.92)
+                                        : AppTheme.surface.withOpacity(0.95),
                                     borderRadius: BorderRadius.circular(16),
                                     border: Border.all(
-                                      color: AppTheme.primary,
-                                      width: 1.2,
+                                      color: isPartner ? AppTheme.primaryDark : AppTheme.border,
+                                      width: isPartner ? 1.4 : 1.0,
                                     ),
                                     boxShadow: const [
                                       BoxShadow(
@@ -441,20 +444,33 @@ class _ShopMapScreenState extends State<ShopMapScreen> {
                                       ),
                                     ],
                                   ),
-                                  child: Text(
-                                    '${shop.name.split('-').first.trim()} • ${shop.distanceKm}km',
-                                    style: const TextStyle(
-                                      color: AppTheme.textPrimary,
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        isPartner ? Icons.verified_rounded : Icons.place_outlined,
+                                        color: isPartner ? Colors.black : AppTheme.textMuted,
+                                        size: 11,
+                                      ),
+                                      const SizedBox(width: 3),
+                                      Flexible(
+                                        child: Text(
+                                          '${shop.name.split('-').first.trim()} • ${shop.distanceKm}km',
+                                          style: TextStyle(
+                                            color: isPartner ? Colors.black : AppTheme.textPrimary,
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                                const Icon(
+                                Icon(
                                   Icons.location_on_rounded,
-                                  color: AppTheme.primary,
+                                  color: isPartner ? AppTheme.primary : Colors.blueGrey,
                                   size: 26,
                                 ),
                               ],
@@ -462,19 +478,20 @@ class _ShopMapScreenState extends State<ShopMapScreen> {
                           ),
                         );
                       } else {
+                        // Shop thường: phân biệt icon rõ ràng
                         return Marker(
                           point: LatLng(shop.latitude, shop.longitude),
-                          width: 32,
-                          height: 32,
+                          width: isPartner ? 34 : 26,
+                          height: isPartner ? 34 : 26,
                           child: GestureDetector(
                             onTap: () => _onShopTapped(shop),
                             child: Container(
                               decoration: BoxDecoration(
-                                color: AppTheme.surface,
+                                color: isPartner ? AppTheme.surface : AppTheme.surfaceLight,
                                 shape: BoxShape.circle,
                                 border: Border.all(
-                                  color: AppTheme.primary,
-                                  width: 1.8,
+                                  color: isPartner ? AppTheme.primary : Colors.blueGrey,
+                                  width: isPartner ? 2.0 : 1.0,
                                 ),
                                 boxShadow: const [
                                   BoxShadow(
@@ -484,11 +501,11 @@ class _ShopMapScreenState extends State<ShopMapScreen> {
                                   ),
                                 ],
                               ),
-                              child: const Center(
+                              child: Center(
                                 child: Icon(
-                                  Icons.sports_tennis_rounded,
-                                  color: AppTheme.primary,
-                                  size: 16,
+                                  isPartner ? Icons.storefront_rounded : Icons.place_outlined,
+                                  color: isPartner ? AppTheme.primary : Colors.blueGrey,
+                                  size: isPartner ? 18 : 13,
                                 ),
                               ),
                             ),
@@ -690,6 +707,8 @@ class _ShopMapScreenState extends State<ShopMapScreen> {
                       itemBuilder: (ctx, i) {
                         final shop = shops[i];
                         final isSelected = selectedShop?.id == shop.id;
+                        final isPartner = shop.isVerifiedPartner;
+
                         return InkWell(
                           onTap: () => _onShopTapped(shop),
                           borderRadius: BorderRadius.circular(14),
@@ -700,13 +719,15 @@ class _ShopMapScreenState extends State<ShopMapScreen> {
                             ),
                             decoration: BoxDecoration(
                               color: isSelected
-                                  ? AppTheme.primary
+                                  ? (isPartner ? AppTheme.primary : Colors.blueGrey)
                                   : AppTheme.surface.withOpacity(0.94),
                               borderRadius: BorderRadius.circular(14),
                               border: Border.all(
                                 color: isSelected
-                                    ? AppTheme.primary
-                                    : AppTheme.border,
+                                    ? (isPartner ? AppTheme.primary : Colors.blueGrey)
+                                    : (isPartner
+                                        ? AppTheme.primary.withOpacity(0.4)
+                                        : AppTheme.border),
                                 width: isSelected ? 1.5 : 1.0,
                               ),
                               boxShadow: const [
@@ -721,11 +742,15 @@ class _ShopMapScreenState extends State<ShopMapScreen> {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Icon(
-                                  Icons.storefront_rounded,
+                                  isPartner
+                                      ? Icons.verified_rounded
+                                      : Icons.place_rounded,
                                   size: 18,
                                   color: isSelected
                                       ? Colors.black
-                                      : AppTheme.primary,
+                                      : (isPartner
+                                          ? AppTheme.primary
+                                          : Colors.blueGrey),
                                 ),
                                 const SizedBox(width: 8),
                                 Column(
@@ -733,7 +758,7 @@ class _ShopMapScreenState extends State<ShopMapScreen> {
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
                                     Text(
-                                      '${shop.name.split('-').first.trim()} • ${shop.distanceKm} km',
+                                      '${isPartner ? "✓ " : "📍 "}${shop.name.split('-').first.trim()} • ${shop.distanceKm} km',
                                       style: TextStyle(
                                         color: isSelected
                                             ? Colors.black
@@ -856,13 +881,24 @@ class _ShopMapScreenState extends State<ShopMapScreen> {
                           width: 48,
                           height: 48,
                           decoration: BoxDecoration(
-                            color: AppTheme.surfaceLight,
+                            color: selectedShop.isVerifiedPartner
+                                ? AppTheme.primary.withOpacity(0.15)
+                                : AppTheme.surfaceLight,
                             borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: selectedShop.isVerifiedPartner
+                                  ? AppTheme.primary
+                                  : AppTheme.border,
+                            ),
                           ),
-                          child: const Icon(
-                            Icons.storefront_rounded,
-                            color: AppTheme.primary,
-                            size: 28,
+                          child: Icon(
+                            selectedShop.isVerifiedPartner
+                                ? Icons.storefront_rounded
+                                : Icons.map_rounded,
+                            color: selectedShop.isVerifiedPartner
+                                ? AppTheme.primary
+                                : AppTheme.textSecondary,
+                            size: 26,
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -870,15 +906,51 @@ class _ShopMapScreenState extends State<ShopMapScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                selectedShop.name,
-                                style: const TextStyle(
-                                  color: AppTheme.textPrimary,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 15.5,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                              Row(
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      selectedShop.name,
+                                      style: const TextStyle(
+                                        color: AppTheme.textPrimary,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 15.5,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: selectedShop.isVerifiedPartner
+                                          ? AppTheme.primary.withOpacity(0.2)
+                                          : AppTheme.surfaceLight,
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(
+                                        color: selectedShop.isVerifiedPartner
+                                            ? AppTheme.primary.withOpacity(0.5)
+                                            : AppTheme.border,
+                                      ),
+                                    ),
+                                    child: Text(
+                                      selectedShop.isVerifiedPartner
+                                          ? '✓ Đối tác App'
+                                          : '📍 Google Maps',
+                                      style: TextStyle(
+                                        color: selectedShop.isVerifiedPartner
+                                            ? AppTheme.primaryDark
+                                            : AppTheme.textMuted,
+                                        fontSize: 9.5,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                               const SizedBox(height: 3),
                               Text(
@@ -939,109 +1011,175 @@ class _ShopMapScreenState extends State<ShopMapScreen> {
                     ),
                     const SizedBox(height: 10),
 
-                    // Machine Badge
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppTheme.surfaceLight,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(
-                            Icons.precision_manufacturing_rounded,
-                            color: AppTheme.primary,
-                            size: 14,
-                          ),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              '${selectedShop.machineModel} • ${selectedShop.openHours}',
-                              style: const TextStyle(
-                                color: AppTheme.textSecondary,
-                                fontSize: 11,
+                    // Machine Badge / Info note
+                    if (selectedShop.isVerifiedPartner) ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppTheme.surfaceLight,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.precision_manufacturing_rounded,
+                              color: AppTheme.primary,
+                              size: 14,
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                '${selectedShop.machineModel} • ${selectedShop.openHours}',
+                                style: const TextStyle(
+                                  color: AppTheme.textSecondary,
+                                  fontSize: 11,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ] else ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppTheme.surfaceLight,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Row(
+                          children: [
+                            Icon(
+                              Icons.info_outline_rounded,
+                              color: AppTheme.accent,
+                              size: 14,
+                            ),
+                            SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                'Điểm tham khảo từ Google Maps • Chưa có gian hàng trên App',
+                                style: TextStyle(
+                                  color: AppTheme.textMuted,
+                                  fontSize: 11,
+                                  fontStyle: FontStyle.italic,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+
+                    // Action buttons: Phân biệt rõ Shop có sẵn vs Shop đối tác đăng ký trên App
+                    if (selectedShop.isVerifiedPartner) ...[
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        ShopDetailScreen(shopId: selectedShop.id),
+                                  ),
+                                );
+                              },
+                              child: const Text('Xem Dịch Vụ & Trưng Bày'),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          IconButton(
+                            tooltip: 'Mở bản đồ chỉ đường Google Maps',
+                            onPressed: () =>
+                                _openMapDirections(selectedShop, userLocation),
+                            icon: const Icon(
+                              Icons.directions_rounded,
+                              color: AppTheme.primary,
+                            ),
+                            style: IconButton.styleFrom(
+                              backgroundColor: AppTheme.surfaceLight,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                side: const BorderSide(color: AppTheme.primary),
+                              ),
+                              padding: const EdgeInsets.all(12),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          IconButton(
+                            tooltip: 'Nhắn tin với cửa hàng',
+                            onPressed: () {
+                              final chatProvider = context.read<ChatProvider>();
+                              final thread = chatProvider.getOrCreateThreadForShop(
+                                selectedShop.id,
+                                selectedShop.name,
+                                selectedShop.imageUrl,
+                              );
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => ChatConversationScreen(
+                                    threadId: thread.id,
+                                  ),
+                                ),
+                              );
+                            },
+                            icon: const Icon(
+                              Icons.chat_bubble_outline_rounded,
+                              color: AppTheme.primaryDark,
+                            ),
+                            style: IconButton.styleFrom(
+                              backgroundColor: AppTheme.surfaceLight,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                side: const BorderSide(color: AppTheme.border),
+                              ),
+                              padding: const EdgeInsets.all(12),
                             ),
                           ),
                         ],
                       ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    // Action buttons
-                    Row(
-                      children: [
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) =>
-                                      ShopDetailScreen(shopId: selectedShop.id),
-                                ),
-                              );
-                            },
-                            child: const Text('Xem Dịch Vụ & Trưng Bày'),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        IconButton(
-                          tooltip: 'Mở bản đồ chỉ đường',
+                    ] else ...[
+                      // Đối với shop có sẵn trên database/Google Maps: Chỉ có nút dẫn trực tiếp sang Google Maps
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
                           onPressed: () =>
                               _openMapDirections(selectedShop, userLocation),
                           icon: const Icon(
                             Icons.directions_rounded,
-                            color: AppTheme.primary,
+                            color: Colors.black,
+                            size: 20,
                           ),
-                          style: IconButton.styleFrom(
-                            backgroundColor: AppTheme.surfaceLight,
+                          label: const Text(
+                            'Dẫn Đường Trực Tiếp Sang Google Maps 🗺️',
+                            style: TextStyle(
+                              color: Colors.black,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13.5,
+                            ),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.primary,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
-                              side: const BorderSide(color: AppTheme.primary),
                             ),
-                            padding: const EdgeInsets.all(12),
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        IconButton(
-                          tooltip: 'Nhắn tin với cửa hàng',
-                          onPressed: () {
-                            final chatProvider = context.read<ChatProvider>();
-                            final thread = chatProvider.getOrCreateThreadForShop(
-                              selectedShop.id,
-                              selectedShop.name,
-                              selectedShop.imageUrl,
-                            );
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => ChatConversationScreen(
-                                  threadId: thread.id,
-                                ),
-                              ),
-                            );
-                          },
-                          icon: const Icon(
-                            Icons.chat_bubble_outline_rounded,
-                            color: AppTheme.primaryDark,
-                          ),
-                          style: IconButton.styleFrom(
-                            backgroundColor: AppTheme.surfaceLight,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              side: const BorderSide(color: AppTheme.border),
-                            ),
-                            padding: const EdgeInsets.all(12),
-                          ),
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ],
                 ),
               ),

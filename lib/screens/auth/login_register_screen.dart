@@ -37,6 +37,15 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
   final _shopCertController = TextEditingController();
   final _shopOpenHoursController = TextEditingController(text: '08:00 - 21:30');
 
+  // Thông tin tọa độ & liên kết Google Maps của Shop
+  final _shopMapLinkController = TextEditingController();
+  final _shopLatitudeController = TextEditingController();
+  final _shopLongitudeController = TextEditingController();
+  bool _isResolvingLocation = false;
+  String? _locationCheckStatus;
+  bool _isLocationValid = false;
+  Shop? _duplicateShopFound;
+
   UserRole _selectedRole = UserRole.player;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
@@ -56,7 +65,73 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
     _shopMachineController.dispose();
     _shopCertController.dispose();
     _shopOpenHoursController.dispose();
+    _shopMapLinkController.dispose();
+    _shopLatitudeController.dispose();
+    _shopLongitudeController.dispose();
     super.dispose();
+  }
+
+  Future<void> _verifyShopLocation() async {
+    final rawLink = _shopMapLinkController.text.trim();
+    final rawLat = _shopLatitudeController.text.trim();
+    final rawLng = _shopLongitudeController.text.trim();
+
+    if (rawLink.isEmpty && (rawLat.isEmpty || rawLng.isEmpty)) {
+      setState(() {
+        _locationCheckStatus = '⚠️ Vui lòng dán link Google Maps hoặc nhập tọa độ!';
+        _isLocationValid = false;
+        _duplicateShopFound = null;
+      });
+      return;
+    }
+
+    setState(() {
+      _isResolvingLocation = true;
+      _locationCheckStatus = null;
+    });
+
+    final shopProv = context.read<ShopProvider>();
+    double? lat;
+    double? lng;
+
+    if (rawLink.isNotEmpty) {
+      final coords = await shopProv.extractCoordinatesFromGoogleMapsUrl(rawLink);
+      if (coords != null) {
+        lat = coords.latitude;
+        lng = coords.longitude;
+        _shopLatitudeController.text = lat.toStringAsFixed(6);
+        _shopLongitudeController.text = lng.toStringAsFixed(6);
+      }
+    }
+
+    if (lat == null || lng == null) {
+      lat = double.tryParse(rawLat);
+      lng = double.tryParse(rawLng);
+    }
+
+    if (lat == null || lng == null || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+      setState(() {
+        _isResolvingLocation = false;
+        _locationCheckStatus = '❌ Không thể xác định tọa độ từ link hoặc số đã nhập. Vui lòng kiểm tra lại link Google Maps!';
+        _isLocationValid = false;
+        _duplicateShopFound = null;
+      });
+      return;
+    }
+
+    final dup = shopProv.findDuplicateShopByLocation(lat, lng);
+    setState(() {
+      _isResolvingLocation = false;
+      if (dup != null) {
+        _duplicateShopFound = dup;
+        _isLocationValid = false;
+        _locationCheckStatus = '❌ Trùng vị trí: Cửa hàng "${dup.name}" đã đăng ký tại vị trí này (${lat!.toStringAsFixed(4)}, ${lng!.toStringAsFixed(4)})!';
+      } else {
+        _duplicateShopFound = null;
+        _isLocationValid = true;
+        _locationCheckStatus = '✅ Tọa độ hợp lệ (${lat!.toStringAsFixed(4)}, ${lng!.toStringAsFixed(4)})! Chưa có cửa hàng nào đăng ký tại đây.';
+      }
+    });
   }
 
   void _switchAuthMode(bool isLogin) {
@@ -80,6 +155,38 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
         password: _passwordController.text,
       );
     } else {
+      if (_selectedRole == UserRole.stringer) {
+        if (!_isLocationValid) {
+          await _verifyShopLocation();
+        }
+
+        final lat = double.tryParse(_shopLatitudeController.text.trim());
+        final lng = double.tryParse(_shopLongitudeController.text.trim());
+
+        if (lat == null || lng == null || !_isLocationValid) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(_locationCheckStatus ?? 'Vui lòng cung cấp link Google Maps hoặc tọa độ hợp lệ và không bị trùng!'),
+              backgroundColor: AppTheme.danger,
+            ),
+          );
+          return;
+        }
+
+        final dup = shopProvider.findDuplicateShopByLocation(lat, lng);
+        if (dup != null) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Vị trí này đã bị trùng với cửa hàng "${dup.name}". Vui lòng kiểm tra lại!'),
+              backgroundColor: AppTheme.danger,
+            ),
+          );
+          return;
+        }
+      }
+
       success = await authProvider.register(
         fullName: _nameController.text,
         phone: _phoneController.text,
@@ -101,14 +208,17 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
         final registeredUser = authProvider.currentUser;
         if (registeredUser != null) {
           final currentLoc = shopProvider.userLocation;
+          final resolvedLat = double.tryParse(_shopLatitudeController.text.trim()) ?? currentLoc.latitude;
+          final resolvedLng = double.tryParse(_shopLongitudeController.text.trim()) ?? currentLoc.longitude;
+
           final newShop = Shop(
             id: 'shop_${registeredUser.uid}',
             name: _shopNameController.text.trim(),
             address: _shopAddressController.text.trim(),
             district: _shopDistrictController.text.trim(),
             city: _shopCityController.text.trim(),
-            latitude: currentLoc.latitude,
-            longitude: currentLoc.longitude,
+            latitude: resolvedLat,
+            longitude: resolvedLng,
             rating: 5.0,
             reviewCount: 0,
             machineModel: _shopMachineController.text.trim(),
@@ -640,6 +750,219 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
                                   ),
                                 ),
                               ],
+                            ),
+                            const SizedBox(height: 14),
+
+                            // Định vị tọa độ Google Maps & Chống trùng vị trí
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: AppTheme.background,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: _isLocationValid
+                                      ? AppTheme.primary.withOpacity(0.5)
+                                      : (_duplicateShopFound != null
+                                          ? AppTheme.danger.withOpacity(0.5)
+                                          : AppTheme.border),
+                                ),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Row(
+                                    children: [
+                                      Icon(
+                                        Icons.add_location_alt_rounded,
+                                        color: AppTheme.primary,
+                                        size: 18,
+                                      ),
+                                      SizedBox(width: 6),
+                                      Expanded(
+                                        child: Text(
+                                          'Định Vị Tọa Độ & Chống Trùng Shop',
+                                          style: TextStyle(
+                                            color: AppTheme.textPrimary,
+                                            fontSize: 12.5,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 4),
+                                  const Text(
+                                    'Dán link chia sẻ từ Google Maps của tiệm hoặc nhập tọa độ để hệ thống tính toán chống trùng lặp vị trí.',
+                                    style: TextStyle(
+                                      color: AppTheme.textMuted,
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 10),
+                                  TextFormField(
+                                    controller: _shopMapLinkController,
+                                    style: const TextStyle(fontSize: 12.5),
+                                    decoration: InputDecoration(
+                                      labelText: 'Link Google Maps của tiệm',
+                                      hintText: 'https://maps.app.goo.gl/... hoặc google.com/maps/...',
+                                      hintStyle: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                                      prefixIcon: const Icon(Icons.link_rounded, color: AppTheme.primary),
+                                      suffixIcon: _isResolvingLocation
+                                          ? const Padding(
+                                              padding: EdgeInsets.all(12),
+                                              child: SizedBox(
+                                                width: 16,
+                                                height: 16,
+                                                child: CircularProgressIndicator(
+                                                  strokeWidth: 2,
+                                                  color: AppTheme.primary,
+                                                ),
+                                              ),
+                                            )
+                                          : IconButton(
+                                              tooltip: 'Trích xuất tọa độ từ link',
+                                              icon: const Icon(Icons.radar_rounded, color: AppTheme.primary),
+                                              onPressed: _verifyShopLocation,
+                                            ),
+                                    ),
+                                    onChanged: (_) {
+                                      if (_isLocationValid) {
+                                        setState(() {
+                                          _isLocationValid = false;
+                                          _locationCheckStatus = null;
+                                        });
+                                      }
+                                    },
+                                  ),
+                                  const SizedBox(height: 10),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: TextFormField(
+                                          controller: _shopLatitudeController,
+                                          keyboardType: const TextInputType.numberWithOptions(
+                                            decimal: true,
+                                            signed: true,
+                                          ),
+                                          style: const TextStyle(fontSize: 12.5),
+                                          decoration: const InputDecoration(
+                                            labelText: 'Vĩ độ (Lat) *',
+                                            hintText: '10.7769',
+                                            prefixIcon: Icon(Icons.my_location_rounded, size: 16),
+                                          ),
+                                          validator: (v) {
+                                            if (v == null || v.trim().isEmpty) {
+                                              return 'Nhập vĩ độ';
+                                            }
+                                            final n = double.tryParse(v.trim());
+                                            if (n == null || n < -90 || n > 90) {
+                                              return 'Vĩ độ sai';
+                                            }
+                                            return null;
+                                          },
+                                          onChanged: (_) {
+                                            if (_isLocationValid) {
+                                              setState(() {
+                                                _isLocationValid = false;
+                                                _locationCheckStatus = null;
+                                              });
+                                            }
+                                          },
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: TextFormField(
+                                          controller: _shopLongitudeController,
+                                          keyboardType: const TextInputType.numberWithOptions(
+                                            decimal: true,
+                                            signed: true,
+                                          ),
+                                          style: const TextStyle(fontSize: 12.5),
+                                          decoration: const InputDecoration(
+                                            labelText: 'Kinh độ (Lng) *',
+                                            hintText: '106.7009',
+                                            prefixIcon: Icon(Icons.explore_outlined, size: 16),
+                                          ),
+                                          validator: (v) {
+                                            if (v == null || v.trim().isEmpty) {
+                                              return 'Nhập kinh độ';
+                                            }
+                                            final n = double.tryParse(v.trim());
+                                            if (n == null || n < -180 || n > 180) {
+                                              return 'Kinh độ sai';
+                                            }
+                                            return null;
+                                          },
+                                          onChanged: (_) {
+                                            if (_isLocationValid) {
+                                              setState(() {
+                                                _isLocationValid = false;
+                                                _locationCheckStatus = null;
+                                              });
+                                            }
+                                          },
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 10),
+                                  SizedBox(
+                                    width: double.infinity,
+                                    child: OutlinedButton.icon(
+                                      onPressed: _isResolvingLocation ? null : _verifyShopLocation,
+                                      icon: _isResolvingLocation
+                                          ? const SizedBox(
+                                              width: 14,
+                                              height: 14,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                color: AppTheme.primary,
+                                              ),
+                                            )
+                                          : const Icon(Icons.check_circle_outline_rounded, size: 16),
+                                      label: const Text(
+                                        'Kiểm tra tính hợp lệ & chống trùng vị trí',
+                                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                                      ),
+                                      style: OutlinedButton.styleFrom(
+                                        foregroundColor: AppTheme.primary,
+                                        side: const BorderSide(color: AppTheme.primary),
+                                        padding: const EdgeInsets.symmetric(vertical: 10),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(10),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  if (_locationCheckStatus != null) ...[
+                                    const SizedBox(height: 8),
+                                    Container(
+                                      width: double.infinity,
+                                      padding: const EdgeInsets.all(10),
+                                      decoration: BoxDecoration(
+                                        color: _isLocationValid
+                                            ? AppTheme.primary.withOpacity(0.12)
+                                            : AppTheme.danger.withOpacity(0.12),
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(
+                                          color: _isLocationValid
+                                              ? AppTheme.primary.withOpacity(0.5)
+                                              : AppTheme.danger.withOpacity(0.5),
+                                        ),
+                                      ),
+                                      child: Text(
+                                        _locationCheckStatus!,
+                                        style: TextStyle(
+                                          fontSize: 11.5,
+                                          fontWeight: FontWeight.w600,
+                                          color: _isLocationValid ? AppTheme.primary : AppTheme.danger,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
                             ),
                             const SizedBox(height: 12),
                             TextFormField(
