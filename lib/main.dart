@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
@@ -11,6 +11,7 @@ import 'providers/cart_provider.dart';
 import 'providers/chat_provider.dart';
 import 'providers/notification_provider.dart';
 import 'providers/order_provider.dart';
+import 'providers/injury_provider.dart';
 import 'screens/auth/splash_screen.dart';
 
 Future<void> main() async {
@@ -47,6 +48,14 @@ class GearSportsApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => ChatProvider()),
         ChangeNotifierProvider(create: (_) => NotificationProvider()),
         ChangeNotifierProvider(create: (_) => OrderProvider()),
+        ChangeNotifierProxyProvider<AuthProvider, InjuryProvider>(
+          create: (_) => InjuryProvider(),
+          update: (_, auth, injuryProv) {
+            final provider = injuryProv ?? InjuryProvider();
+            provider.syncForUser(auth.currentUser?.uid);
+            return provider;
+          },
+        ),
       ],
       child: MaterialApp(
         title: 'Gear Sports - Trợ Lý Cầu Lông & Đan Vợt',

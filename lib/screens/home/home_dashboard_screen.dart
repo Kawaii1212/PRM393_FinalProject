@@ -7,6 +7,7 @@ import '../../providers/shop_provider.dart';
 import '../../providers/notification_provider.dart';
 import '../../providers/chat_provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/injury_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/racket_card.dart';
 import '../../widgets/shop_card.dart';
@@ -16,6 +17,8 @@ import '../shop/shop_detail_screen.dart';
 import '../chat/chat_screen.dart';
 import '../profile/profile_screen.dart';
 import '../sport/sport_selection_screen.dart';
+import '../injury/injury_assessment_screen.dart';
+import '../injury/injury_history_screen.dart';
 
 class HomeDashboardScreen extends StatelessWidget {
   final Function(int)? onNavigateTab;
@@ -263,6 +266,9 @@ class HomeDashboardScreen extends StatelessWidget {
             ),
             const SizedBox(height: 16),
 
+            // Card Theo Dõi Thể Lực / Chấn Thương Thể Thao
+            _buildInjuryCard(context),
+
             // Emergency Restring Alert Banner (Theo Luồng Sơ Đồ Home -> Notifications / Gear Detail)
             if (alertRackets.isNotEmpty) ...[
               Container(
@@ -363,16 +369,30 @@ class HomeDashboardScreen extends StatelessWidget {
                   color: AppTheme.primary,
                   onTap: () => onNavigateTab?.call(2), // Shop Map
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 8),
                 _shortcutButton(
                   icon: Icons.add_rounded,
-                  label: 'Thêm Vợt Mới',
+                  label: 'Thêm Vợt',
                   color: AppTheme.primaryDark,
                   onTap: () {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder: (_) => const AddEditRacketScreen(),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(width: 8),
+                _shortcutButton(
+                  icon: Icons.healing_rounded,
+                  label: 'Bác Sĩ Thể Thao',
+                  color: AppTheme.accent,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const InjuryAssessmentScreen(),
                       ),
                     );
                   },
@@ -565,6 +585,184 @@ class HomeDashboardScreen extends StatelessWidget {
             const SizedBox(height: 20),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildInjuryCard(BuildContext context) {
+    final injuryProv = context.watch<InjuryProvider>();
+    final activeInjury = injuryProv.activeInjury;
+
+    if (activeInjury != null) {
+      return Container(
+        margin: const EdgeInsets.only(bottom: 16),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: activeInjury.status.color.withOpacity(0.12),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: activeInjury.status.color.withOpacity(0.5)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  activeInjury.bodyPart.icon,
+                  color: activeInjury.status.color,
+                  size: 22,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Đang theo dõi: ${activeInjury.injuryNameVi}',
+                    style: TextStyle(
+                      color: activeInjury.status.color,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13.5,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: activeInjury.status.color.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    activeInjury.status.label,
+                    style: TextStyle(
+                      color: activeInjury.status.color,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Điểm đau: ${activeInjury.painScore}/10 • Vùng: ${activeInjury.bodyPart.shortLabel}. Nhấn để xem lộ trình phục hồi hoặc cập nhật trạng thái.',
+              style: const TextStyle(
+                color: AppTheme.textPrimary,
+                fontSize: 12,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const InjuryHistoryScreen(),
+                      ),
+                    );
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: activeInjury.status.color,
+                    foregroundColor: Colors.black,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                  ),
+                  child: const Text('Xem Sổ Tay'),
+                ),
+                const SizedBox(width: 10),
+                OutlinedButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => InjuryAssessmentScreen(
+                          initialBodyPart: activeInjury.bodyPart,
+                        ),
+                      ),
+                    );
+                  },
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppTheme.textPrimary,
+                    side: const BorderSide(color: AppTheme.border),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    textStyle: const TextStyle(fontSize: 12),
+                  ),
+                  child: const Text('Tái Khám'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Nếu chưa có chấn thương đang theo dõi, hiển thị card gợi ý
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: AppTheme.primaryDark.withOpacity(0.15),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.healing_rounded,
+              color: AppTheme.primaryDark,
+              size: 22,
+            ),
+          ),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Bác Sĩ Thể Thao & Đau Mỏi 🩺',
+                  style: TextStyle(
+                    color: AppTheme.textPrimary,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                  ),
+                ),
+                SizedBox(height: 2),
+                Text(
+                  'Tự kiểm tra khớp cổ tay, khuỷu tay và tương quan lực căng vợt.',
+                  style: TextStyle(
+                    color: AppTheme.textSecondary,
+                    fontSize: 11.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const InjuryAssessmentScreen(),
+                ),
+              );
+            },
+            child: const Text(
+              'Khám ngay',
+              style: TextStyle(
+                color: AppTheme.primaryDark,
+                fontWeight: FontWeight.bold,
+                fontSize: 12,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
