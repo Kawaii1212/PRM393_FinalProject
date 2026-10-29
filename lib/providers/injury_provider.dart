@@ -72,8 +72,8 @@ class InjuryProvider with ChangeNotifier {
         notifyListeners();
       }
 
-      // 2. Đồng bộ từ Cloud Firestore: users/{uid}/injuries
-      if (_isFirebaseReady) {
+      // 2. Đồng bộ từ Cloud Firestore: users/{uid}/injuries (Bỏ qua cho khách dùng thử)
+      if (_isFirebaseReady && uid != 'guest_user') {
         final colRef = FirebaseFirestore.instance
             .collection('users')
             .doc(uid)
@@ -157,7 +157,10 @@ class InjuryProvider with ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       await _saveToLocalCache(prefs);
 
-      if (_isFirebaseReady && _currentUserId != null && _currentUserId!.isNotEmpty) {
+      if (_isFirebaseReady &&
+          _currentUserId != null &&
+          _currentUserId!.isNotEmpty &&
+          _currentUserId != 'guest_user') {
         await FirebaseFirestore.instance
             .collection('users')
             .doc(_currentUserId)
@@ -175,7 +178,10 @@ class InjuryProvider with ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       await _saveToLocalCache(prefs);
 
-      if (_isFirebaseReady && _currentUserId != null && _currentUserId!.isNotEmpty) {
+      if (_isFirebaseReady &&
+          _currentUserId != null &&
+          _currentUserId!.isNotEmpty &&
+          _currentUserId != 'guest_user') {
         await FirebaseFirestore.instance
             .collection('users')
             .doc(_currentUserId)

@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
@@ -55,6 +55,17 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   void _confirmOrder(BuildContext context) {
+    final phone = _phoneController.text.trim();
+    if (!RegExp(r'^0\d{9}$').hasMatch(phone)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Số điện thoại phải bắt đầu bằng số 0 và có đúng 10 chữ số!'),
+          backgroundColor: AppTheme.danger,
+        ),
+      );
+      return;
+    }
+
     final cart = context.read<CartProvider>();
     final orderTotal = cart.totalAmount;
     final orderId = 'GS-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
@@ -276,6 +287,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             const SizedBox(height: 12),
             TextFormField(
               controller: _phoneController,
+              keyboardType: TextInputType.phone,
               decoration: const InputDecoration(
                 labelText: 'Số điện thoại liên lạc',
                 prefixIcon: Icon(Icons.phone_outlined, color: AppTheme.primary),

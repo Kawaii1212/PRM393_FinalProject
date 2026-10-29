@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
@@ -7,8 +7,10 @@ import '../../models/tension_log_model.dart';
 import '../../models/notification_model.dart';
 import '../../providers/racket_provider.dart';
 import '../../providers/notification_provider.dart';
+import '../../providers/auth_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/racket_image_widget.dart';
+import '../auth/login_register_screen.dart';
 
 class AddEditRacketScreen extends StatefulWidget {
   final Racket? existingRacket;
@@ -188,9 +190,60 @@ class _AddEditRacketScreenState extends State<AddEditRacketScreen> {
 
   Future<void> _saveRacket() async {
     if (_formKey.currentState!.validate()) {
+      final authProv = context.read<AuthProvider>();
+      final racketProv = context.read<RacketProvider>();
+      final existing = widget.existingRacket;
+
+      // Giới hạn số vợt cho Khách dùng thử (Tối đa 3 cây vợt)
+      if (authProv.isGuest && existing == null && racketProv.allRackets.length >= 3) {
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            backgroundColor: AppTheme.surface,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+            title: const Row(
+              children: [
+                Icon(Icons.lock_outline_rounded, color: AppTheme.accent),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Giới Hạn Khách Dùng Thử',
+                    style: TextStyle(
+                      color: AppTheme.textPrimary,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            content: const Text(
+              'Tài khoản Khách Dùng Thử chỉ được thêm tối đa 3 cây vợt vào Gara.\n\nVui lòng đăng nhập hoặc tạo tài khoản để quản lý không giới hạn số lượng vợt!',
+              style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Để sau', style: TextStyle(color: AppTheme.textSecondary)),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const LoginRegisterScreen()),
+                  );
+                },
+                child: const Text('Đăng nhập ngay'),
+              ),
+            ],
+          ),
+        );
+        return;
+      }
+
       final tensionVal =
           double.tryParse(_initialTensionController.text.trim()) ?? 0.0;
-      final existing = widget.existingRacket;
       final racketId =
           existing?.id ?? 'racket_${DateTime.now().millisecondsSinceEpoch}';
       final finalBrand = _brand == 'Khác'
@@ -571,8 +624,25 @@ class _AddEditRacketScreenState extends State<AddEditRacketScreen> {
                           const TextInputType.numberWithOptions(decimal: true),
                       decoration: const InputDecoration(
                         labelText: 'Lực căng (lbs)',
+                        hintText: '15.0 - 60.0',
                         suffixText: 'lbs',
                       ),
+                      validator: (v) {
+                        if (v == null || v.trim().isEmpty) {
+                          if (_stringModelController.text.trim().isNotEmpty) {
+                            return 'Vui lòng nhập lực căng';
+                          }
+                          return null;
+                        }
+                        final parsed = double.tryParse(v.trim());
+                        if (parsed == null) {
+                          return 'Phải là số thực (vd: 24.5)';
+                        }
+                        if (parsed < 15.0 || parsed > 60.0) {
+                          return 'Từ 15.0 đến 60.0 lbs';
+                        }
+                        return null;
+                      },
                     ),
                   ),
                 ],

@@ -639,8 +639,9 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
                         if (v == null || v.trim().isEmpty) {
                           return 'Vui lòng nhập số điện thoại';
                         }
-                        if (v.trim().length < 9) {
-                          return 'Số điện thoại không hợp lệ';
+                        final clean = v.trim();
+                        if (!RegExp(r'^0\d{9}$').hasMatch(clean)) {
+                          return 'Số điện thoại phải bắt đầu bằng số 0 và có đủ 10 chữ số';
                         }
                         return null;
                       },

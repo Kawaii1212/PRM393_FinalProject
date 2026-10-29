@@ -7,8 +7,10 @@ import '../../models/product_model.dart';
 import '../../models/shop_model.dart';
 import '../../providers/shop_provider.dart';
 import '../../providers/chat_provider.dart';
+import '../../providers/auth_provider.dart';
 import '../../theme/app_theme.dart';
 import '../chat/chat_screen.dart';
+import '../auth/login_register_screen.dart';
 
 class ShopDetailScreen extends StatefulWidget {
   final String shopId;
@@ -398,6 +400,58 @@ class _ShopDetailScreenState extends State<ShopDetailScreen>
                           flex: 3,
                           child: ElevatedButton.icon(
                             onPressed: () {
+                              final isGuest = context.read<AuthProvider>().isGuest;
+                              if (isGuest) {
+                                showDialog(
+                                  context: context,
+                                  builder: (ctx) => AlertDialog(
+                                    backgroundColor: AppTheme.surface,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                                    title: const Row(
+                                      children: [
+                                        Icon(Icons.lock_outline_rounded, color: AppTheme.accent),
+                                        SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            'Yêu Cầu Đăng Nhập',
+                                            style: TextStyle(
+                                              color: AppTheme.textPrimary,
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    content: const Text(
+                                      'Chức năng Nhắn tin trao đổi với Shop chỉ dành cho người dùng đã đăng nhập tài khoản. Vui lòng đăng nhập để tiếp tục!',
+                                      style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(ctx),
+                                        child: const Text('Để sau', style: TextStyle(color: AppTheme.textSecondary)),
+                                      ),
+                                      ElevatedButton(
+                                        onPressed: () {
+                                          Navigator.pop(ctx);
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(builder: (_) => const LoginRegisterScreen()),
+                                          );
+                                        },
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: AppTheme.primary,
+                                          foregroundColor: Colors.black,
+                                        ),
+                                        child: const Text('Đăng nhập ngay'),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                                return;
+                              }
+
                               final chatProvider = context.read<ChatProvider>();
                               final thread = chatProvider.getOrCreateThreadForShop(
                                 shop.id,

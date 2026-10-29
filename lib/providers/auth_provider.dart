@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -17,6 +17,8 @@ class AuthProvider extends ChangeNotifier {
 
   UserModel? get currentUser => _currentUser;
   bool get isLoggedIn => _currentUser != null;
+  bool get isGuest => _currentUser?.uid == 'guest_user' || _currentUser?.email == 'guest@gearsports.vn';
+  bool get isAuthenticatedUser => isLoggedIn && !isGuest;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
   bool get isFirebaseAvailable => _isFirebaseAvailable;

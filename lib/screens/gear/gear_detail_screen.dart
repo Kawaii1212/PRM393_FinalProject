@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../models/racket_model.dart';
@@ -230,10 +230,10 @@ class _GearDetailScreenState extends State<GearDetailScreen> {
                           });
                         },
                         validator: (v) {
-                          if (v == null || v.isEmpty) return 'Vui lòng nhập số lbs';
-                          final numVal = double.tryParse(v);
-                          if (numVal == null || numVal < 18 || numVal > 36) {
-                            return 'Mức căng hợp lệ từ 18 đến 36 lbs';
+                          if (v == null || v.trim().isEmpty) return 'Vui lòng nhập số lbs';
+                          final numVal = double.tryParse(v.trim());
+                          if (numVal == null || numVal < 15.0 || numVal > 60.0) {
+                            return 'Mức căng hợp lệ từ 15 đến 60 lbs (dạng số thực)';
                           }
                           return null;
                         },
@@ -518,6 +518,57 @@ class _GearDetailScreenState extends State<GearDetailScreen> {
                     ),
                   ),
 
+                  // Cảnh báo nếu chưa có nhật ký đan cước để ước tính trạng thái
+                  if (!racket.hasTensionLog) ...[
+                    const SizedBox(height: 14),
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: AppTheme.accent.withOpacity(0.14),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: AppTheme.accent.withOpacity(0.6)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Row(
+                            children: [
+                              Icon(Icons.warning_amber_rounded, color: AppTheme.accent, size: 22),
+                              SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'Chưa có nhật ký đan cước!',
+                                  style: TextStyle(
+                                    color: AppTheme.accent,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 13.5,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          const Text(
+                            'Vui lòng nhập nhật ký đan cước để ứng dụng có thể ước tính trạng thái và độ hao hụt của cây vợt.',
+                            style: TextStyle(color: AppTheme.textPrimary, fontSize: 12, height: 1.35),
+                          ),
+                          const SizedBox(height: 10),
+                          ElevatedButton.icon(
+                            onPressed: () => _showAddTensionLogDialog(context, racket),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppTheme.accent,
+                              foregroundColor: Colors.black,
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                              textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                            ),
+                            icon: const Icon(Icons.add_rounded, size: 18),
+                            label: const Text('Nhập Nhật Ký Đan Cước Ngay'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+
                   // Alert if needing restring (Tạm thời bỏ tính năng đặt lịch đan cước trực tiếp)
                   if (racket.needsRestring) ...[
                     const SizedBox(height: 14),
@@ -631,14 +682,32 @@ class _GearDetailScreenState extends State<GearDetailScreen> {
                 decoration: BoxDecoration(
                   color: AppTheme.surface,
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: AppTheme.border),
+                  border: Border.all(color: AppTheme.accent.withOpacity(0.5)),
                 ),
-                child: const Center(
-                  child: Text(
-                    'Chưa có nhật ký đan cước nào. Nhấn "Thêm lần đan" để bắt đầu theo dõi!',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: AppTheme.textMuted),
-                  ),
+                child: Column(
+                  children: [
+                    const Icon(Icons.assignment_late_outlined, color: AppTheme.accent, size: 36),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Vui lòng nhập nhật ký đan cước để có thể ước tính trạng thái cây vợt!',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: AppTheme.textPrimary,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    ElevatedButton.icon(
+                      onPressed: () => _showAddTensionLogDialog(context, racket),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.primary,
+                        foregroundColor: Colors.black,
+                      ),
+                      icon: const Icon(Icons.add_circle_outline_rounded, size: 18),
+                      label: const Text('Thêm Nhật Ký Đan Cước Đầu Tiên'),
+                    ),
+                  ],
                 ),
               )
             else

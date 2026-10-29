@@ -7,20 +7,24 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/chat_model.dart';
 import '../models/shop_model.dart';
 import '../models/shop_report_model.dart';
-import '../data/mock_data.dart';
 
 class ChatProvider with ChangeNotifier {
-  static const String _prefThreadsKey = 'gearsports_chat_threads';
   static const String _prefReportsKey = 'gearsports_shop_reports';
 
-  final List<ChatThread> _threads = List.from(MockData.initialThreads);
+  String? _currentUserId;
+  final List<ChatThread> _threads = [];
   final List<ShopReport> _reports = [];
   StreamSubscription<QuerySnapshot>? _threadsSubscription;
   StreamSubscription<QuerySnapshot>? _reportsSubscription;
 
+  String get _prefThreadsKey =>
+      'gearsports_chat_threads_${_currentUserId ?? "default"}';
+
   ChatProvider() {
-    _loadCacheAndSyncFirebase();
+    _loadReportsAndSyncFirebase();
   }
+
+  String? get currentUserId => _currentUserId;
 
   @override
   void dispose() {
@@ -69,6 +73,77 @@ class ChatProvider with ChangeNotifier {
     }
   }
 
+  /// Đồng bộ tin nhắn riêng tư theo tài khoản người dùng: users/{userId}/chat_threads
+  Future<void> syncForUser(String? userId) async {
+    if (_currentUserId == userId && _threads.isNotEmpty) return;
+    _currentUserId = userId;
+    _threadsSubscription?.cancel();
+
+    if (userId == null || userId.isEmpty || userId == 'guest_user') {
+      _threads.clear();
+      notifyListeners();
+      return;
+    }
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final rawThreads = prefs.getString(_prefThreadsKey);
+      if (rawThreads != null && rawThreads.isNotEmpty) {
+        final decoded = jsonDecode(rawThreads) as List<dynamic>;
+        final loadedThreads = decoded
+            .map((e) => ChatThread.fromMap(Map<String, dynamic>.from(e)))
+            .toList();
+        _threads.clear();
+        _threads.addAll(loadedThreads);
+        notifyListeners();
+      } else {
+        _threads.clear();
+        notifyListeners();
+      }
+
+      // Lắng nghe bảo mật riêng tư từ Firestore: users/{userId}/chat_threads
+      if (_isFirebaseReady) {
+        _threadsSubscription = FirebaseFirestore.instance
+            .collection('users')
+            .doc(userId)
+            .collection('chat_threads')
+            .snapshots()
+            .listen(
+          (snapshot) {
+            final remoteThreads = <ChatThread>[];
+            for (final doc in snapshot.docs) {
+              try {
+                final t = ChatThread.fromMap(doc.data());
+                remoteThreads.add(t);
+              } catch (e) {
+                debugPrint('Lỗi parse chat_thread doc ${doc.id}: $e');
+              }
+            }
+
+            final mapById = <String, ChatThread>{};
+            for (final t in _threads) {
+              mapById[t.id] = t;
+            }
+            for (final t in remoteThreads) {
+              mapById[t.id] = t;
+            }
+            final sorted = mapById.values.toList()
+              ..sort((a, b) => b.lastMessageTime.compareTo(a.lastMessageTime));
+            _threads.clear();
+            _threads.addAll(sorted);
+            _persistThreads();
+            notifyListeners();
+          },
+          onError: (e) {
+            debugPrint('Lỗi lắng nghe Firestore chat_threads của user: $e');
+          },
+        );
+      }
+    } catch (e) {
+      debugPrint('ChatProvider syncForUser error: $e');
+    }
+  }
+
   ChatThread getOrCreateThreadForShop(String shopId, String shopName, String shopAvatar) {
     final existing = _threads.indexWhere((t) => t.shopId == shopId);
     if (existing != -1) {
@@ -76,6 +151,7 @@ class ChatProvider with ChangeNotifier {
     }
     final newThread = ChatThread(
       id: 'thread_${DateTime.now().millisecondsSinceEpoch}',
+      userId: _currentUserId ?? 'user',
       shopId: shopId,
       shopName: shopName,
       shopAvatar: shopAvatar,
@@ -87,10 +163,12 @@ class ChatProvider with ChangeNotifier {
     _threads.insert(0, newThread);
     _persistThreads();
 
-    // Lưu luồng chat lên Cloud Firestore
-    if (_isFirebaseReady) {
+    // Lưu luồng chat vào danh mục users/{userId}/chat_threads
+    if (_isFirebaseReady && _currentUserId != null && _currentUserId != 'guest_user') {
       try {
         FirebaseFirestore.instance
+            .collection('users')
+            .doc(_currentUserId)
             .collection('chat_threads')
             .doc(newThread.id)
             .set(newThread.toMap(), SetOptions(merge: true))
@@ -214,9 +292,13 @@ class ChatProvider with ChangeNotifier {
   }
 
   Future<void> _syncMessageToFirestore(ChatThread thread, ChatMessage msg) async {
-    if (!_isFirebaseReady) return;
+    if (!_isFirebaseReady || _currentUserId == null || _currentUserId == 'guest_user') return;
     try {
-      final threadDoc = FirebaseFirestore.instance.collection('chat_threads').doc(thread.id);
+      final threadDoc = FirebaseFirestore.instance
+          .collection('users')
+          .doc(_currentUserId)
+          .collection('chat_threads')
+          .doc(thread.id);
       // 1. Cập nhật thread document (bao gồm lastMessage, lastMessageTime và mảng messages)
       await threadDoc.set(thread.toMap(), SetOptions(merge: true));
       // 2. Lưu tin nhắn chi tiết vào subcollection 'messages' để tra cứu theo thời gian
@@ -232,6 +314,7 @@ class ChatProvider with ChangeNotifier {
       final thread = _threads[index];
       final updatedThread = ChatThread(
         id: thread.id,
+        userId: thread.userId,
         shopId: thread.shopId,
         shopName: thread.shopName,
         shopAvatar: thread.shopAvatar,
@@ -244,8 +327,10 @@ class ChatProvider with ChangeNotifier {
       _persistThreads();
       notifyListeners();
 
-      if (_isFirebaseReady) {
+      if (_isFirebaseReady && _currentUserId != null && _currentUserId != 'guest_user') {
         FirebaseFirestore.instance
+            .collection('users')
+            .doc(_currentUserId)
             .collection('chat_threads')
             .doc(threadId)
             .update({'unreadCount': 0})
@@ -259,9 +344,11 @@ class ChatProvider with ChangeNotifier {
     _persistThreads();
     notifyListeners();
 
-    if (_isFirebaseReady) {
+    if (_isFirebaseReady && _currentUserId != null && _currentUserId != 'guest_user') {
       try {
         FirebaseFirestore.instance
+            .collection('users')
+            .doc(_currentUserId)
             .collection('chat_threads')
             .doc(threadId)
             .delete()
@@ -279,6 +366,7 @@ class ChatProvider with ChangeNotifier {
       final updatedMessages = thread.messages.where((m) => m.id != messageId).toList();
       final updatedThread = ChatThread(
         id: thread.id,
+        userId: thread.userId,
         shopId: thread.shopId,
         shopName: thread.shopName,
         shopAvatar: thread.shopAvatar,
@@ -291,9 +379,13 @@ class ChatProvider with ChangeNotifier {
       _persistThreads();
       notifyListeners();
 
-      if (_isFirebaseReady) {
+      if (_isFirebaseReady && _currentUserId != null && _currentUserId != 'guest_user') {
         try {
-          final threadDoc = FirebaseFirestore.instance.collection('chat_threads').doc(threadId);
+          final threadDoc = FirebaseFirestore.instance
+              .collection('users')
+              .doc(_currentUserId)
+              .collection('chat_threads')
+              .doc(threadId);
           threadDoc.set(updatedThread.toMap(), SetOptions(merge: true));
           threadDoc.collection('messages').doc(messageId).delete();
         } catch (e) {
@@ -405,22 +497,9 @@ class ChatProvider with ChangeNotifier {
     }
   }
 
-  Future<void> _loadCacheAndSyncFirebase() async {
+  Future<void> _loadReportsAndSyncFirebase() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-
-      // 1. Tải bộ nhớ tạm Local SharedPreferences để giao diện hiển thị tức thì
-      final rawThreads = prefs.getString(_prefThreadsKey);
-      if (rawThreads != null && rawThreads.isNotEmpty) {
-        final decoded = jsonDecode(rawThreads) as List<dynamic>;
-        final loadedThreads = decoded
-            .map((e) => ChatThread.fromMap(Map<String, dynamic>.from(e)))
-            .toList();
-        if (loadedThreads.isNotEmpty) {
-          _threads.clear();
-          _threads.addAll(loadedThreads);
-        }
-      }
 
       final rawReports = prefs.getString(_prefReportsKey);
       if (rawReports != null && rawReports.isNotEmpty) {
@@ -434,46 +513,8 @@ class ChatProvider with ChangeNotifier {
 
       notifyListeners();
 
-      // 2. KẾT NỐI VÀ LẮNG NGHE THỜI GIAN THỰC TỪ CLOUD FIRESTORE
+      // KẾT NỐI VÀ LẮNG NGHE ĐƠN BÁO CÁO SHOP TỪ CLOUD FIRESTORE
       if (_isFirebaseReady) {
-        // Lắng nghe luồng tin nhắn 'chat_threads' trên Firebase Firestore
-        _threadsSubscription = FirebaseFirestore.instance
-            .collection('chat_threads')
-            .snapshots()
-            .listen(
-          (snapshot) {
-            final remoteThreads = <ChatThread>[];
-            for (final doc in snapshot.docs) {
-              try {
-                final t = ChatThread.fromMap(doc.data());
-                remoteThreads.add(t);
-              } catch (e) {
-                debugPrint('Lỗi parse chat_thread doc ${doc.id}: $e');
-              }
-            }
-
-            if (remoteThreads.isNotEmpty) {
-              final mapById = <String, ChatThread>{};
-              for (final t in _threads) {
-                mapById[t.id] = t;
-              }
-              for (final t in remoteThreads) {
-                mapById[t.id] = t;
-              }
-              final sorted = mapById.values.toList()
-                ..sort((a, b) => b.lastMessageTime.compareTo(a.lastMessageTime));
-              _threads.clear();
-              _threads.addAll(sorted);
-              _persistThreads();
-              notifyListeners();
-            }
-          },
-          onError: (e) {
-            debugPrint('Lỗi lắng nghe Firestore chat_threads: $e');
-          },
-        );
-
-        // Lắng nghe đơn báo cáo 'shop_reports' trên Firebase Firestore
         _reportsSubscription = FirebaseFirestore.instance
             .collection('shop_reports')
             .orderBy('createdAt', descending: true)
@@ -511,7 +552,7 @@ class ChatProvider with ChangeNotifier {
         );
       }
     } catch (e) {
-      debugPrint('ChatProvider _loadCacheAndSyncFirebase error: $e');
+      debugPrint('ChatProvider _loadReportsAndSyncFirebase error: $e');
     }
   }
 }

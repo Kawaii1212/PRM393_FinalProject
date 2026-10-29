@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -103,8 +103,8 @@ class RacketProvider with ChangeNotifier {
         notifyListeners();
       }
 
-      // 2. Đồng bộ với Cloud Firestore: users/{uid}/rackets
-      if (_isFirebaseReady) {
+      // 2. Đồng bộ với Cloud Firestore: users/{uid}/rackets (Bỏ qua nếu là Khách dùng thử)
+      if (_isFirebaseReady && uid != 'guest_user') {
         final colRef = FirebaseFirestore.instance
             .collection('users')
             .doc(uid)
@@ -219,9 +219,11 @@ class RacketProvider with ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       await _saveToLocalCache(prefs);
 
+      // Khách dùng thử: Chỉ lưu local cache, không ghi lên Firebase
       if (_isFirebaseReady &&
           _currentUserId != null &&
-          _currentUserId!.isNotEmpty) {
+          _currentUserId!.isNotEmpty &&
+          _currentUserId != 'guest_user') {
         await FirebaseFirestore.instance
             .collection('users')
             .doc(_currentUserId)
@@ -240,9 +242,11 @@ class RacketProvider with ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       await _saveToLocalCache(prefs);
 
+      // Khách dùng thử: Chỉ lưu local cache, không ghi lên Firebase
       if (_isFirebaseReady &&
           _currentUserId != null &&
-          _currentUserId!.isNotEmpty) {
+          _currentUserId!.isNotEmpty &&
+          _currentUserId != 'guest_user') {
         await FirebaseFirestore.instance
             .collection('users')
             .doc(_currentUserId)

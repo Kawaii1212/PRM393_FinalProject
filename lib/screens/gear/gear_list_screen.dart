@@ -1,9 +1,11 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../models/racket_model.dart';
 import '../../providers/racket_provider.dart';
+import '../../providers/auth_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/racket_card.dart';
+import '../auth/login_register_screen.dart';
 import 'gear_detail_screen.dart';
 import 'add_edit_racket_screen.dart';
 
@@ -69,6 +71,66 @@ class GearListScreen extends StatelessWidget {
     );
   }
 
+  void _navigateToAddRacket(BuildContext context) {
+    final authProv = context.read<AuthProvider>();
+    final racketProv = context.read<RacketProvider>();
+    if (authProv.isGuest && racketProv.allRackets.length >= 3) {
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: AppTheme.surface,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          title: const Row(
+            children: [
+              Icon(Icons.lock_outline_rounded, color: AppTheme.accent),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Giới Hạn Khách Dùng Thử',
+                  style: TextStyle(
+                    color: AppTheme.textPrimary,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: const Text(
+            'Tài khoản Khách Dùng Thử chỉ được thêm tối đa 3 cây vợt vào Gara.\n\nVui lòng đăng nhập hoặc tạo tài khoản để quản lý không giới hạn số lượng vợt!',
+            style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Để sau', style: TextStyle(color: AppTheme.textSecondary)),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const LoginRegisterScreen()),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primary,
+                foregroundColor: Colors.black,
+              ),
+              child: const Text('Đăng nhập ngay'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const AddEditRacketScreen()),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final racketProvider = context.watch<RacketProvider>();
@@ -93,12 +155,7 @@ class GearListScreen extends StatelessWidget {
           IconButton(
             icon: const Icon(Icons.add_circle_outline_rounded, color: AppTheme.primary),
             tooltip: 'Thêm vợt mới',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const AddEditRacketScreen()),
-              );
-            },
+            onPressed: () => _navigateToAddRacket(context),
           ),
         ],
       ),
@@ -222,12 +279,7 @@ class GearListScreen extends StatelessWidget {
                         ),
                         const SizedBox(height: 16),
                         ElevatedButton.icon(
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(builder: (_) => const AddEditRacketScreen()),
-                            );
-                          },
+                          onPressed: () => _navigateToAddRacket(context),
                           icon: const Icon(Icons.add),
                           label: const Text('Thêm Vợt Vào Gara Ngay'),
                         ),
@@ -257,12 +309,7 @@ class GearListScreen extends StatelessWidget {
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const AddEditRacketScreen()),
-          );
-        },
+        onPressed: () => _navigateToAddRacket(context),
         backgroundColor: AppTheme.primary,
         foregroundColor: Colors.black,
         icon: const Icon(Icons.add_rounded),
