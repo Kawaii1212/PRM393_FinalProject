@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 
 class AppTheme {
   // Brand Athletic Palette
@@ -6,6 +6,7 @@ class AppTheme {
   static const Color primaryDark = Color(0xFF00B0FF); // Cyber Cyan
   static const Color accent = Color(0xFFFF9100); // Energetic Amber
   static const Color danger = Color(0xFFFF5252); // Alert Red
+  static const Color success = Color(0xFF00E676); // Success Green
 
   // Dark Athletic Surfaces
   static const Color background = Color(0xFF0A0F1D); // Deep Midnight

@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -83,6 +83,22 @@ class ShopProvider with ChangeNotifier {
   int get disabledShopsCount =>
       allShopsForAdmin.where((s) => s.isDisabled).length;
 
+  /// Số lượng Shop đối tác chính thức đã đăng ký trên app và được Admin phê duyệt (isVerifiedPartner)
+  int get verifiedShopsCount =>
+      allShopsForAdmin.where((s) => s.isVerifiedPartner).length;
+
+  /// Số lượng Shop địa điểm Google Maps đang hiển thị hoạt động trên bản đồ (chưa có tài khoản chủ shop)
+  int get mapsShopsCount =>
+      allShopsForAdmin.where((s) => !s.isRegisteredOnApp && s.isApproved).length;
+
+  /// Danh sách các Shop đối tác thực tế đã đăng ký tài khoản trên app và được Admin phê duyệt (isVerifiedPartner)
+  /// Không bao gồm các địa điểm hiển thị trên Google Maps (CSV) chưa có tài khoản chủ shop
+  List<Shop> get approvedShops {
+    final verified = _firestoreShops.where((s) => s.isVerifiedPartner).toList();
+    if (verified.isNotEmpty) return verified;
+    return allShopsForAdmin.where((s) => s.isVerifiedPartner).toList();
+  }
+
   /// Tìm cửa hàng của Chủ Shop đang đăng nhập (`ownerUid`)
   Shop? getShopForOwner(String ownerUid) {
     try {
@@ -90,6 +106,106 @@ class ShopProvider with ChangeNotifier {
     } catch (_) {
       return null;
     }
+  }
+
+  /// Trích xuất tọa độ (lat, lng) từ URL Google Maps hoặc chuỗi tọa độ nhập trực tiếp
+  Future<LatLng?> extractCoordinatesFromGoogleMapsUrl(String input) async {
+    final raw = input.trim();
+    if (raw.isEmpty) return null;
+
+    // 1. Kiểm tra nếu nhập trực tiếp dạng "lat, lng" (ví dụ: "21.01234, 105.5253")
+    final directCoordRegex = RegExp(r'^([-+]?[0-9]*\.?[0-9]+)\s*,\s*([-+]?[0-9]*\.?[0-9]+)$');
+    final directMatch = directCoordRegex.firstMatch(raw);
+    if (directMatch != null) {
+      final lat = double.tryParse(directMatch.group(1)!);
+      final lng = double.tryParse(directMatch.group(2)!);
+      if (lat != null && lng != null && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+        return LatLng(lat, lng);
+      }
+    }
+
+    String urlToParse = raw;
+
+    // 2. Nếu là link rút gọn (maps.app.goo.gl hoặc goo.gl/maps), gọi HTTP để lấy link đích sau khi redirect
+    if (raw.contains('maps.app.goo.gl') || raw.contains('goo.gl/maps')) {
+      try {
+        final client = http.Client();
+        final uri = Uri.parse(raw.startsWith('http') ? raw : 'https://$raw');
+        final request = http.Request('GET', uri)..followRedirects = true;
+        final response = await client.send(request).timeout(const Duration(seconds: 5));
+        urlToParse = response.request?.url.toString() ?? urlToParse;
+        client.close();
+      } catch (e) {
+        debugPrint('Lỗi giải mã redirect short URL Google Maps: $e');
+      }
+    }
+
+    // 3. Phân tích các định dạng URL Google Maps phổ biến:
+    // a) @lat,lng,zoom (ví dụ: /@21.012423,105.525312,17z)
+    final atRegex = RegExp(r'@([-+]?[0-9]*\.?[0-9]+),([-+]?[0-9]*\.?[0-9]+)');
+    final atMatch = atRegex.firstMatch(urlToParse);
+    if (atMatch != null) {
+      final lat = double.tryParse(atMatch.group(1)!);
+      final lng = double.tryParse(atMatch.group(2)!);
+      if (lat != null && lng != null && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+        return LatLng(lat, lng);
+      }
+    }
+
+    // b) Tham số truy vấn q=lat,lng hoặc query=lat,lng hoặc ll=lat,lng hoặc destination=lat,lng
+    final queryParamRegex = RegExp(r'[?&](?:q|query|ll|center|destination)=([-+]?[0-9]*\.?[0-9]+),([-+]?[0-9]*\.?[0-9]+)');
+    final queryMatch = queryParamRegex.firstMatch(urlToParse);
+    if (queryMatch != null) {
+      final lat = double.tryParse(queryMatch.group(1)!);
+      final lng = double.tryParse(queryMatch.group(2)!);
+      if (lat != null && lng != null && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+        return LatLng(lat, lng);
+      }
+    }
+
+    // c) Tìm bất kỳ cặp số thực dạng kinh/vĩ độ trong URL dạng embed !3d lat !4d lng
+    final dataParamRegex = RegExp(r'!3d([-+]?[0-9]*\.?[0-9]+)!4d([-+]?[0-9]*\.?[0-9]+)');
+    final dataMatch = dataParamRegex.firstMatch(urlToParse);
+    if (dataMatch != null) {
+      final lat = double.tryParse(dataMatch.group(1)!);
+      final lng = double.tryParse(dataMatch.group(2)!);
+      if (lat != null && lng != null && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+        return LatLng(lat, lng);
+      }
+    }
+
+    return null;
+  }
+
+  /// Kiểm tra xem tọa độ (latitude, longitude) có bị trùng lặp với bất kỳ cửa hàng nào trong hệ thống
+  /// Ngưỡng mặc định là 25 mét (thresholdMeters).
+  Shop? findDuplicateShopByLocation(
+    double latitude,
+    double longitude, {
+    double thresholdMeters = 25.0,
+    String? excludeShopId,
+  }) {
+    const Distance distanceCalc = Distance();
+    final targetPos = LatLng(latitude, longitude);
+
+    for (final s in allShopsForAdmin) {
+      if (excludeShopId != null && s.id == excludeShopId) continue;
+
+      if ((s.latitude - latitude).abs() > 0.005 || (s.longitude - longitude).abs() > 0.005) {
+        continue;
+      }
+
+      final distMeters = distanceCalc.as(
+        LengthUnit.Meter,
+        targetPos,
+        LatLng(s.latitude, s.longitude),
+      );
+
+      if (distMeters <= thresholdMeters) {
+        return s;
+      }
+    }
+    return null;
   }
 
   /// Đồng bộ Cửa hàng & Sản phẩm/Dịch vụ từ Cloud Firestore (`shops`, `products`)
@@ -234,18 +350,70 @@ class ShopProvider with ChangeNotifier {
     }
   }
 
+  /// Admin phê duyệt (`approved`) hoặc vô hiệu hóa (`disabled`) Cửa hàng theo shopId
+  Future<void> approveShop(String shopId, bool isDisabling) async {
+    final shop = getShopById(shopId);
+    if (shop != null) {
+      await updateShopStatus(shop, isDisabling ? 'disabled' : 'approved');
+    }
+  }
+
   /// Admin phê duyệt (`approved`) hoặc vô hiệu hóa (`disabled`) Cửa hàng
+  /// Khi vô hiệu hóa shop, toàn bộ sản phẩm của shop sẽ tạm thời bị vô hiệu hóa theo (Cascade Deactivate)
   Future<void> updateShopStatus(Shop shop, String newStatus) async {
     final updated = shop.copyWith(status: newStatus);
     await upsertShop(updated);
+
+    final isDisabling = (newStatus == 'disabled');
+    for (int i = 0; i < _products.length; i++) {
+      if (_products[i].shopId == shop.id) {
+        _products[i] = _products[i].copyWith(
+          status: isDisabling ? 'rejected' : 'approved',
+        );
+      }
+    }
+    notifyListeners();
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        _prefProductsKey,
+        jsonEncode(_products.map((p) => p.toMap()).toList()),
+      );
+
+      if (_isFirebaseReady) {
+        final firestore = FirebaseFirestore.instance;
+        final prodsSnap = await firestore
+            .collection('products')
+            .where('shopId', isEqualTo: shop.id)
+            .get()
+            .timeout(const Duration(seconds: 5));
+
+        if (prodsSnap.docs.isNotEmpty) {
+          final batch = firestore.batch();
+          for (final doc in prodsSnap.docs) {
+            batch.update(doc.reference, {
+              'status': isDisabling ? 'rejected' : 'approved',
+            });
+          }
+          await batch.commit().timeout(const Duration(seconds: 5));
+        }
+      }
+    } catch (e) {
+      debugPrint('updateShopStatus cascade products error: $e');
+    }
   }
 
-  /// Xóa Cửa hàng khỏi Cloud Firestore (`shops/{id}`)
+  /// Xóa Cửa hàng và toàn bộ Sản phẩm/Dịch vụ liên quan khỏi Cloud Firestore (Cascade Delete)
   Future<void> deleteShop(String shopId) async {
     _firestoreShops.removeWhere((s) => s.id == shopId);
     _discoveredShops.removeWhere((s) => s.id == shopId);
     _allShops.removeWhere((s) => s.id == shopId);
     _shops.removeWhere((s) => s.id == shopId);
+
+    // Xóa toàn bộ sản phẩm và dịch vụ của shop này khỏi bộ nhớ ứng dụng
+    _products.removeWhere((p) => p.shopId == shopId);
+
     if (_selectedShop?.id == shopId) {
       _selectedShop = null;
     }
@@ -257,15 +425,34 @@ class ShopProvider with ChangeNotifier {
         _prefShopsKey,
         jsonEncode(_firestoreShops.map((s) => s.toMap()).toList()),
       );
+      await prefs.setString(
+        _prefProductsKey,
+        jsonEncode(_products.map((p) => p.toMap()).toList()),
+      );
+
       if (_isFirebaseReady) {
-        await FirebaseFirestore.instance
-            .collection('shops')
-            .doc(shopId)
-            .delete()
+        final firestore = FirebaseFirestore.instance;
+        final batch = firestore.batch();
+
+        // 1. Xóa document cửa hàng trong collection 'shops'
+        final shopDocRef = firestore.collection('shops').doc(shopId);
+        batch.delete(shopDocRef);
+
+        // 2. Tìm và xóa toàn bộ sản phẩm thuộc shopId trong collection 'products'
+        final prodsSnap = await firestore
+            .collection('products')
+            .where('shopId', isEqualTo: shopId)
+            .get()
             .timeout(const Duration(seconds: 5));
+
+        for (final doc in prodsSnap.docs) {
+          batch.delete(doc.reference);
+        }
+
+        await batch.commit().timeout(const Duration(seconds: 6));
       }
     } catch (e) {
-      debugPrint('deleteShop error: $e');
+      debugPrint('deleteShop cascade delete error: $e');
     }
   }
 
@@ -412,90 +599,20 @@ class ShopProvider with ChangeNotifier {
   }
 
   /// Lấy danh sách sản phẩm & dịch vụ hợp lệ hiển thị cho Người chơi
+  /// Khi shop bị xóa hoặc bị vô hiệu hóa -> Toàn bộ sản phẩm sẽ biến mất khỏi danh mục Người chơi
   List<Product> getProductsForShop(String shopId) {
+    final targetShop = getShopById(shopId);
+    if (targetShop == null || !targetShop.isApproved) {
+      return [];
+    }
+
     final custom = _products
         .where(
           (p) =>
               (p.shopId == shopId || p.shopId == 'all') && !p.isRejected,
         )
         .toList();
-    if (custom.isNotEmpty) return custom;
-
-    // Danh mục dịch vụ đan cước & phụ kiện mặc định cho mọi shop
-    return [
-      Product(
-        id: '${shopId}_srv_01',
-        shopId: shopId,
-        name: 'Công đan cước 4 nút máy điện tử Yonex',
-        category: ProductCategory.service,
-        price: 40000,
-        description:
-            'Đan theo chuẩn Yonex World Tour, kẹp cước điện tử không dập cước, bảo vệ khung tuyệt đối.',
-        imageUrl:
-            'https://images.unsplash.com/photo-1587280501635-68a0e82cd5ff?auto=format&fit=crop&w=600&q=80',
-        isService: true,
-      ),
-      Product(
-        id: '${shopId}_srv_02',
-        shopId: shopId,
-        name: 'Gói đan cước lấy ngay trong 20 phút',
-        category: ProductCategory.service,
-        price: 60000,
-        description:
-            'Ưu tiên lên máy ngay lập tức, kiểm tra gen miễn phí, căn chỉnh cân bằng tĩnh.',
-        imageUrl:
-            'https://images.unsplash.com/photo-1587280501635-68a0e82cd5ff?auto=format&fit=crop&w=600&q=80',
-        isService: true,
-      ),
-      Product(
-        id: '${shopId}_str_01',
-        shopId: shopId,
-        name: 'Dây Cước Yonex Exbolt 65 (0.65mm)',
-        category: ProductCategory.string,
-        price: 175000,
-        description:
-            'Công nghệ sợi Forged Fiber siêu bền, trợ lực bùng nổ, âm thanh vang dội đanh tai.',
-        imageUrl:
-            'https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?auto=format&fit=crop&w=600&q=80',
-        availableColors: ['Trắng', 'Vàng Chanh', 'Đen'],
-      ),
-      Product(
-        id: '${shopId}_str_02',
-        shopId: shopId,
-        name: 'Dây Cước Li-Ning No.1 (0.65mm)',
-        category: ProductCategory.string,
-        price: 150000,
-        description:
-            'Độ nảy 10/10, âm nổ cực đanh, cước trợ lực số 1 của thương hiệu Li-Ning.',
-        imageUrl:
-            'https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?auto=format&fit=crop&w=600&q=80',
-        availableColors: ['Trắng', 'Đỏ', 'Cam'],
-      ),
-      Product(
-        id: '${shopId}_str_03',
-        shopId: shopId,
-        name: 'Dây Cước Yonex BG65 Ti Quốc Dân (0.70mm)',
-        category: ProductCategory.string,
-        price: 130000,
-        description:
-            'Phủ hợp kim Titanium bền bỉ, thích hợp người chơi phong trào tiết kiệm chi phí.',
-        imageUrl:
-            'https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?auto=format&fit=crop&w=600&q=80',
-        availableColors: ['Trắng', 'Đen', 'Vàng'],
-      ),
-      Product(
-        id: '${shopId}_grp_01',
-        shopId: shopId,
-        name: 'Quấn cán Yonex AC102EX Super Grap',
-        category: ProductCategory.grip,
-        price: 35000,
-        description:
-            'Quấn cán cao su bám tay số 1 thế giới, chống trơn tuyệt đối, độ dày 0.6mm.',
-        imageUrl:
-            'https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?auto=format&fit=crop&w=600&q=80',
-        availableColors: ['Trắng', 'Đen', 'Vàng', 'Đỏ', 'Tím'],
-      ),
-    ];
+    return custom;
   }
 
   /// Lấy toàn bộ sản phẩm & dịch vụ của riêng một cửa hàng cho Chủ Shop / Admin quản lý
@@ -623,17 +740,20 @@ class ShopProvider with ChangeNotifier {
       for (final s in CsvShopData.shops) s.id: s,
     };
 
-    // 2. Tự động tìm thêm qua Google Places API nếu có cấu hình API Key
+    // 2. Tự động tìm thêm qua Google Places API nếu có cấu hình API Key, hoặc dự phòng qua Overpass POI
     try {
       List<Shop> places = await _fetchFromGooglePlacesNew(center);
       if (places.isEmpty) {
         places = await _fetchFromGooglePlacesLegacy(center);
       }
+      if (places.isEmpty) {
+        places = await _fetchRealPOIShopsFallback(center);
+      }
       for (final s in places) {
         baseShopMap[s.id] = s;
       }
     } catch (e) {
-      debugPrint('Google Places search note: $e');
+      debugPrint('Google Places / POI search note: $e');
     }
 
     // 3. Tính khoảng cách thực tế từ vị trí người dùng đến từng shop

@@ -6,6 +6,7 @@ import '../../models/user_model.dart';
 import '../../models/shop_model.dart';
 import '../../models/notification_model.dart';
 import '../../models/chat_model.dart';
+import '../../models/shop_report_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/admin_provider.dart';
 import '../../providers/shop_provider.dart';
@@ -297,18 +298,19 @@ class _AdminOverviewTab extends StatelessWidget {
                   onTap: () => onSwitchTab(1),
                 ),
                 _AdminMetricCard(
-                  title: 'Shop Đang Hoạt Động',
-                  value: '${shopProv.approvedShopsCount}',
+                  title: 'Shop Được Phê Duyệt',
+                  value: '${shopProv.verifiedShopsCount}',
                   subtitle:
-                      '${shopProv.disabledShopsCount} Shop đã vô hiệu hóa',
-                  icon: Icons.storefront_rounded,
-                  color: AppTheme.primaryDark,
+                      '${shopProv.mapsShopsCount} Điểm Google Maps hoạt động',
+                  icon: Icons.verified_user_rounded,
+                  color: AppTheme.primary,
                   onTap: () => onSwitchTab(2),
                 ),
                 _AdminMetricCard(
                   title: 'Shop Chờ Phê Duyệt',
                   value: '${shopProv.pendingShopsCount}',
-                  subtitle: 'Chủ shop mới đăng ký',
+                  subtitle:
+                      '${shopProv.disabledShopsCount} Shop đã vô hiệu hóa',
                   icon: Icons.pending_actions_rounded,
                   color: AppTheme.accent,
                   onTap: () => onSwitchTab(2),
@@ -1007,9 +1009,15 @@ class _AdminShopsProductsTabState extends State<_AdminShopsProductsTab>
   late TabController _subTabController;
   final _currencyFormat = NumberFormat.currency(locale: 'vi_VN', symbol: 'đ');
 
-  String _shopStatusFilter = 'all'; // all, pending, approved, disabled
+  String _shopStatusFilter = 'all'; // all, verified, pending, approved, disabled
   String _selectedShopFilterId = 'all';
   String _productCategoryFilter = 'all'; // all, racket, service, string, grip, accessory
+
+  String _shopSearchQuery = '';
+  final _shopSearchController = TextEditingController();
+
+  String _productSearchQuery = '';
+  final _productSearchController = TextEditingController();
 
   @override
   void initState() {
@@ -1019,6 +1027,8 @@ class _AdminShopsProductsTabState extends State<_AdminShopsProductsTab>
 
   @override
   void dispose() {
+    _shopSearchController.dispose();
+    _productSearchController.dispose();
     _subTabController.dispose();
     super.dispose();
   }
@@ -1026,6 +1036,8 @@ class _AdminShopsProductsTabState extends State<_AdminShopsProductsTab>
   void _inspectShopItems(String shopId) {
     setState(() {
       _selectedShopFilterId = shopId;
+      _productSearchQuery = '';
+      _productSearchController.clear();
     });
     _subTabController.animateTo(1);
   }
@@ -1107,6 +1119,50 @@ class _AdminShopsProductsTabState extends State<_AdminShopsProductsTab>
             children: [
               const Divider(color: AppTheme.border),
               const SizedBox(height: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                decoration: BoxDecoration(
+                  color: s.isVerifiedPartner
+                      ? AppTheme.primary.withOpacity(0.12)
+                      : (s.isPending
+                          ? AppTheme.accent.withOpacity(0.12)
+                          : (s.isDisabled ? AppTheme.danger.withOpacity(0.12) : AppTheme.surfaceLight)),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      s.isVerifiedPartner
+                          ? Icons.verified_rounded
+                          : (s.isPending ? Icons.pending_rounded : (s.isDisabled ? Icons.block_rounded : Icons.map_rounded)),
+                      size: 16,
+                      color: s.isVerifiedPartner
+                          ? AppTheme.primary
+                          : (s.isPending ? AppTheme.accent : (s.isDisabled ? AppTheme.danger : AppTheme.textMuted)),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        s.isVerifiedPartner
+                            ? 'Cửa hàng đối tác đã phê duyệt (Đăng bán vật phẩm & dịch vụ)'
+                            : (s.isPending
+                                ? 'Cửa hàng đang chờ Admin phê duyệt hồ sơ'
+                                : (s.isDisabled
+                                    ? 'Cửa hàng đã bị vô hiệu hóa'
+                                    : 'Địa điểm Google Maps (Không có tài khoản chủ shop trên app)')),
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.bold,
+                          color: s.isVerifiedPartner
+                              ? AppTheme.primary
+                              : (s.isPending ? AppTheme.accent : (s.isDisabled ? AppTheme.danger : AppTheme.textSecondary)),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
               if (s.ownerName != null || s.ownerEmail != null) ...[
                 Text(
                   '👤 Chủ shop: ${s.ownerName ?? "Chưa rõ"} (${s.ownerEmail ?? ""})',
@@ -1191,7 +1247,7 @@ class _AdminShopsProductsTabState extends State<_AdminShopsProductsTab>
           ),
         ),
         content: Text(
-          'Bạn có chắc chắn muốn xóa vĩnh viễn cửa hàng "${shop.name}" khỏi hệ thống Cloud Firestore không?',
+          'Bạn có chắc chắn muốn xóa vĩnh viễn cửa hàng "${shop.name}" cùng TOÀN BỘ sản phẩm và dịch vụ của cửa hàng này khỏi Cloud Firestore không?',
           style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13.5),
         ),
         actions: [
@@ -1231,10 +1287,34 @@ class _AdminShopsProductsTabState extends State<_AdminShopsProductsTab>
     final shopProv = context.watch<ShopProvider>();
     final allShops = shopProv.allShopsForAdmin;
     final allProducts = shopProv.allProducts;
+    final productShops = allShops
+        .where((s) => s.isRegisteredOnApp || allProducts.any((p) => p.shopId == s.id))
+        .toList();
 
     final filteredShops = allShops.where((s) {
-      if (_shopStatusFilter == 'all') return true;
-      return s.status == _shopStatusFilter;
+      bool matchStatus;
+      switch (_shopStatusFilter) {
+        case 'verified':
+          matchStatus = s.isVerifiedPartner;
+          break;
+        case 'pending':
+          matchStatus = s.isPending;
+          break;
+        case 'approved':
+          matchStatus = (!s.isRegisteredOnApp && s.isApproved);
+          break;
+        case 'disabled':
+          matchStatus = s.isDisabled;
+          break;
+        case 'all':
+        default:
+          matchStatus = true;
+          break;
+      }
+      final matchSearch = _shopSearchQuery.isEmpty ||
+          s.name.toLowerCase().contains(_shopSearchQuery.toLowerCase()) ||
+          s.address.toLowerCase().contains(_shopSearchQuery.toLowerCase());
+      return matchStatus && matchSearch;
     }).toList();
 
     final filteredProducts = allProducts.where((p) {
@@ -1243,7 +1323,10 @@ class _AdminShopsProductsTabState extends State<_AdminShopsProductsTab>
           p.shopId == 'all';
       final matchCat = _productCategoryFilter == 'all' ||
           p.category.name == _productCategoryFilter;
-      return matchShop && matchCat;
+      final matchSearch = _selectedShopFilterId == 'all' ||
+          _productSearchQuery.isEmpty ||
+          p.name.toLowerCase().contains(_productSearchQuery.toLowerCase());
+      return matchShop && matchCat && matchSearch;
     }).toList();
 
     return Column(
@@ -1295,6 +1378,25 @@ class _AdminShopsProductsTabState extends State<_AdminShopsProductsTab>
                           ),
                         ),
                         DropdownMenuItem(
+                          value: 'verified',
+                          child: Row(
+                            children: [
+                              const Icon(Icons.verified_rounded, size: 16, color: AppTheme.primary),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  'Được phê duyệt (${shopProv.verifiedShopsCount})',
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: AppTheme.primary,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        DropdownMenuItem(
                           value: 'pending',
                           child: Text(
                             'Chờ phê duyệt (${shopProv.pendingShopsCount})',
@@ -1304,7 +1406,7 @@ class _AdminShopsProductsTabState extends State<_AdminShopsProductsTab>
                         DropdownMenuItem(
                           value: 'approved',
                           child: Text(
-                            'Đang hoạt động (${shopProv.approvedShopsCount})',
+                            'Đang hoạt động - Google Maps (${shopProv.mapsShopsCount})',
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
@@ -1321,6 +1423,43 @@ class _AdminShopsProductsTabState extends State<_AdminShopsProductsTab>
                           setState(() => _shopStatusFilter = val);
                         }
                       },
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+                    child: TextField(
+                      controller: _shopSearchController,
+                      onChanged: (val) => setState(() => _shopSearchQuery = val.trim()),
+                      style: const TextStyle(color: AppTheme.textPrimary, fontSize: 13.5),
+                      decoration: InputDecoration(
+                        hintText: 'Tìm kiếm cửa hàng theo tên hoặc địa chỉ...',
+                        hintStyle: const TextStyle(color: AppTheme.textMuted, fontSize: 13),
+                        prefixIcon: const Icon(Icons.search_rounded, color: AppTheme.primary, size: 20),
+                        suffixIcon: _shopSearchQuery.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.clear, size: 18, color: AppTheme.textMuted),
+                                onPressed: () {
+                                  _shopSearchController.clear();
+                                  setState(() => _shopSearchQuery = '');
+                                },
+                              )
+                            : null,
+                        filled: true,
+                        fillColor: AppTheme.surface,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: AppTheme.border),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: AppTheme.border),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: AppTheme.primary),
+                        ),
+                      ),
                     ),
                   ),
                   Expanded(
@@ -1341,11 +1480,20 @@ class _AdminShopsProductsTabState extends State<_AdminShopsProductsTab>
                             itemCount: filteredShops.length,
                             itemBuilder: (context, idx) {
                               final s = filteredShops[idx];
+                              final dupShop = shopProv.findDuplicateShopByLocation(
+                                s.latitude,
+                                s.longitude,
+                                excludeShopId: s.id,
+                              );
                               Color statusColor = AppTheme.primary;
-                              if (s.isPending) {
+                              if (s.isVerifiedPartner) {
+                                statusColor = AppTheme.primary;
+                              } else if (s.isPending) {
                                 statusColor = AppTheme.accent;
                               } else if (s.isDisabled) {
                                 statusColor = AppTheme.danger;
+                              } else {
+                                statusColor = AppTheme.primaryDark;
                               }
 
                               final shopItemCount = allProducts
@@ -1362,7 +1510,9 @@ class _AdminShopsProductsTabState extends State<_AdminShopsProductsTab>
                                         ? AppTheme.accent.withOpacity(0.6)
                                         : (s.isDisabled
                                             ? AppTheme.danger.withOpacity(0.5)
-                                            : AppTheme.border),
+                                            : (s.isVerifiedPartner
+                                                ? AppTheme.primary.withOpacity(0.5)
+                                                : AppTheme.border)),
                                   ),
                                 ),
                                 child: InkWell(
@@ -1409,13 +1559,26 @@ class _AdminShopsProductsTabState extends State<_AdminShopsProductsTab>
                                                       .withOpacity(0.5),
                                                 ),
                                               ),
-                                              child: Text(
-                                                s.statusDisplayName,
-                                                style: TextStyle(
-                                                  color: statusColor,
-                                                  fontSize: 10.5,
-                                                  fontWeight: FontWeight.bold,
-                                                ),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  if (s.isVerifiedPartner) ...[
+                                                    const Icon(
+                                                      Icons.verified_rounded,
+                                                      size: 13,
+                                                      color: AppTheme.primary,
+                                                    ),
+                                                    const SizedBox(width: 3),
+                                                  ],
+                                                  Text(
+                                                    s.statusDisplayName,
+                                                    style: TextStyle(
+                                                      color: statusColor,
+                                                      fontSize: 10.5,
+                                                      fontWeight: FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                ],
                                               ),
                                             ),
                                             const SizedBox(width: 4),
@@ -1426,41 +1589,202 @@ class _AdminShopsProductsTabState extends State<_AdminShopsProductsTab>
                                             ),
                                           ],
                                         ),
-                                        const SizedBox(height: 14),
-                                        SizedBox(
-                                          width: double.infinity,
-                                          child: OutlinedButton.icon(
-                                            onPressed: () =>
-                                                _inspectShopItems(s.id),
-                                            icon: const Icon(
-                                              Icons.fact_check_outlined,
-                                              size: 16,
-                                              color: AppTheme.primaryDark,
+                                        const SizedBox(height: 6),
+                                        if (s.isRegisteredOnApp)
+                                          Row(
+                                            children: [
+                                              const Icon(
+                                                Icons.person_outline_rounded,
+                                                size: 14,
+                                                color: AppTheme.primary,
+                                              ),
+                                              const SizedBox(width: 4),
+                                              Expanded(
+                                                child: Text(
+                                                  'Chủ shop: ${s.ownerName ?? "Thợ đan"}${s.ownerEmail != null ? " (${s.ownerEmail})" : ""}',
+                                                  style: const TextStyle(
+                                                    color: AppTheme.primary,
+                                                    fontSize: 11.5,
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                ),
+                                              ),
+                                            ],
+                                          )
+                                        else
+                                          const Row(
+                                            children: [
+                                              Icon(
+                                                Icons.map_outlined,
+                                                size: 14,
+                                                color: AppTheme.textMuted,
+                                              ),
+                                              SizedBox(width: 4),
+                                              Expanded(
+                                                child: Text(
+                                                  'Địa điểm Google Maps • Chưa có chủ gian hàng',
+                                                  style: TextStyle(
+                                                    color: AppTheme.textMuted,
+                                                    fontSize: 11.5,
+                                                  ),
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          '${s.address}, ${s.district}',
+                                          style: const TextStyle(
+                                            color: AppTheme.textSecondary,
+                                            fontSize: 12,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        if (dupShop != null) ...[
+                                          const SizedBox(height: 10),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 10,
+                                              vertical: 8,
                                             ),
-                                            label: Text(
-                                              'Xem vật phẩm & dịch vụ đăng bán ($shopItemCount)',
-                                              style: const TextStyle(
-                                                color: AppTheme.primaryDark,
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.bold,
+                                            decoration: BoxDecoration(
+                                              color: AppTheme.danger.withOpacity(0.12),
+                                              borderRadius: BorderRadius.circular(8),
+                                              border: Border.all(
+                                                color: AppTheme.danger.withOpacity(0.4),
                                               ),
                                             ),
-                                            style: OutlinedButton.styleFrom(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                vertical: 10,
-                                              ),
-                                              side: BorderSide(
-                                                color: AppTheme.primaryDark
-                                                    .withOpacity(0.5),
-                                              ),
-                                              shape: RoundedRectangleBorder(
-                                                borderRadius:
-                                                    BorderRadius.circular(10),
-                                              ),
+                                            child: Row(
+                                              children: [
+                                                const Icon(
+                                                  Icons.warning_amber_rounded,
+                                                  color: AppTheme.danger,
+                                                  size: 16,
+                                                ),
+                                                const SizedBox(width: 8),
+                                                Expanded(
+                                                  child: Text(
+                                                    'Cảnh báo: Trùng vị trí với "${dupShop.name}" (${s.latitude.toStringAsFixed(4)}, ${s.longitude.toStringAsFixed(4)})',
+                                                    style: const TextStyle(
+                                                      color: AppTheme.danger,
+                                                      fontSize: 11,
+                                                      fontWeight: FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
                                             ),
                                           ),
-                                        ),
+                                        ],
+                                        const SizedBox(height: 12),
+                                        if (s.isVerifiedPartner)
+                                          SizedBox(
+                                            width: double.infinity,
+                                            child: ElevatedButton.icon(
+                                              onPressed: () =>
+                                                  _inspectShopItems(s.id),
+                                              icon: const Icon(
+                                                Icons.fact_check_outlined,
+                                                size: 16,
+                                                color: Colors.black,
+                                              ),
+                                              label: Text(
+                                                'Xem vật phẩm & dịch vụ đăng bán ($shopItemCount)',
+                                                style: const TextStyle(
+                                                  color: Colors.black,
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor: AppTheme.primary,
+                                                foregroundColor: Colors.black,
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                  vertical: 10,
+                                                ),
+                                                shape: RoundedRectangleBorder(
+                                                  borderRadius:
+                                                      BorderRadius.circular(10),
+                                                ),
+                                              ),
+                                            ),
+                                          )
+                                        else if (s.isPending)
+                                          SizedBox(
+                                            width: double.infinity,
+                                            child: OutlinedButton.icon(
+                                              onPressed: () =>
+                                                  _inspectShopItems(s.id),
+                                              icon: const Icon(
+                                                Icons.fact_check_outlined,
+                                                size: 16,
+                                                color: AppTheme.accent,
+                                              ),
+                                              label: Text(
+                                                'Xem vật phẩm & dịch vụ chờ duyệt ($shopItemCount)',
+                                                style: const TextStyle(
+                                                  color: AppTheme.accent,
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                              style: OutlinedButton.styleFrom(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                  vertical: 10,
+                                                ),
+                                                side: BorderSide(
+                                                  color: AppTheme.accent
+                                                      .withOpacity(0.6),
+                                                ),
+                                                shape: RoundedRectangleBorder(
+                                                  borderRadius:
+                                                      BorderRadius.circular(10),
+                                                ),
+                                              ),
+                                            ),
+                                          )
+                                        else
+                                          Container(
+                                            width: double.infinity,
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 12,
+                                              vertical: 9,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: AppTheme.surfaceLight,
+                                              borderRadius:
+                                                  BorderRadius.circular(10),
+                                              border: Border.all(
+                                                color: AppTheme.border,
+                                              ),
+                                            ),
+                                            child: const Row(
+                                              children: [
+                                                Icon(
+                                                  Icons.info_outline_rounded,
+                                                  size: 15,
+                                                  color: AppTheme.textMuted,
+                                                ),
+                                                SizedBox(width: 8),
+                                                Expanded(
+                                                  child: Text(
+                                                    'Địa điểm Google Maps (không có chủ shop đăng bán vật phẩm & dịch vụ)',
+                                                    style: TextStyle(
+                                                      color: AppTheme.textMuted,
+                                                      fontSize: 11.5,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
                                         const SizedBox(height: 10),
                                         Row(
                                           children: [
@@ -1648,49 +1972,55 @@ class _AdminShopsProductsTabState extends State<_AdminShopsProductsTab>
               // --------------------------------------------------------------
               Column(
                 children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 18, 16, 12),
-                    child: DropdownButtonFormField<String>(
-                      value: allShops.any((s) => s.id == _selectedShopFilterId)
-                          ? _selectedShopFilterId
-                          : 'all',
-                      isExpanded: true,
-                      dropdownColor: AppTheme.surface,
-                      decoration: const InputDecoration(
-                        prefixIcon: Icon(
-                          Icons.store_rounded,
-                          color: AppTheme.primary,
-                        ),
-                        contentPadding: EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 12,
-                        ),
-                      ),
-                      items: [
-                        const DropdownMenuItem(
-                          value: 'all',
-                          child: Text(
-                            'Tất cả cửa hàng trên hệ thống',
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        ...allShops.map(
-                          (s) => DropdownMenuItem(
-                            value: s.id,
-                            child: Text(
-                              s.name,
-                              overflow: TextOverflow.ellipsis,
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 18, 16, 12),
+                        child: DropdownButtonFormField<String>(
+                          value: (productShops.any((s) => s.id == _selectedShopFilterId) || allShops.any((s) => s.id == _selectedShopFilterId))
+                              ? _selectedShopFilterId
+                              : 'all',
+                          isExpanded: true,
+                          dropdownColor: AppTheme.surface,
+                          decoration: const InputDecoration(
+                            prefixIcon: Icon(
+                              Icons.store_rounded,
+                              color: AppTheme.primary,
+                            ),
+                            contentPadding: EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 12,
                             ),
                           ),
+                          items: [
+                            const DropdownMenuItem(
+                              value: 'all',
+                              child: Text(
+                                'Tất cả cửa hàng đối tác đăng bán',
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            ...productShops.map(
+                              (s) => DropdownMenuItem(
+                                value: s.id,
+                                child: Text(
+                                  '${s.name}${s.isVerifiedPartner ? " (✓ Được phê duyệt)" : ""}',
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ),
+                          ],
+                          onChanged: (val) {
+                            if (val != null) {
+                              setState(() {
+                                _selectedShopFilterId = val;
+                                if (val == 'all') {
+                                  _productSearchQuery = '';
+                                  _productSearchController.clear();
+                                }
+                              });
+                            }
+                          },
                         ),
-                      ],
-                      onChanged: (val) {
-                        if (val != null) {
-                          setState(() => _selectedShopFilterId = val);
-                        }
-                      },
-                    ),
-                  ),
+                      ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                     child: DropdownButtonFormField<String>(
@@ -1740,6 +2070,69 @@ class _AdminShopsProductsTabState extends State<_AdminShopsProductsTab>
                       },
                     ),
                   ),
+                  // Thanh tìm kiếm bằng tên: CHỈ HIỂN THỊ SAU KHI ĐÃ CHỌN 1 CỬA HÀNG CỤ THỂ
+                  if (_selectedShopFilterId != 'all')
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+                      child: TextField(
+                        controller: _productSearchController,
+                        onChanged: (val) =>
+                            setState(() => _productSearchQuery = val.trim()),
+                        style: const TextStyle(
+                          color: AppTheme.textPrimary,
+                          fontSize: 13.5,
+                        ),
+                        decoration: InputDecoration(
+                          hintText:
+                              'Tìm kiếm vật phẩm / dịch vụ của shop...',
+                          hintStyle: const TextStyle(
+                            color: AppTheme.textMuted,
+                            fontSize: 13,
+                          ),
+                          prefixIcon: const Icon(
+                            Icons.search_rounded,
+                            color: AppTheme.primary,
+                            size: 20,
+                          ),
+                          suffixIcon: _productSearchQuery.isNotEmpty
+                              ? IconButton(
+                                  icon: const Icon(
+                                    Icons.clear,
+                                    size: 18,
+                                    color: AppTheme.textMuted,
+                                  ),
+                                  onPressed: () {
+                                    _productSearchController.clear();
+                                    setState(
+                                      () => _productSearchQuery = '',
+                                    );
+                                  },
+                                )
+                              : null,
+                          filled: true,
+                          fillColor: AppTheme.surface,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 11,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide:
+                                const BorderSide(color: AppTheme.border),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide:
+                                const BorderSide(color: AppTheme.border),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide:
+                                const BorderSide(color: AppTheme.primary),
+                          ),
+                        ),
+                      ),
+                    ),
                   Expanded(
                     child: filteredProducts.isEmpty
                         ? const Center(
@@ -1759,11 +2152,15 @@ class _AdminShopsProductsTabState extends State<_AdminShopsProductsTab>
                             itemBuilder: (context, idx) {
                               final p = filteredProducts[idx];
                               final ownerShop = shopProv.getShopById(p.shopId);
-                              final shopLabel = p.shopName ??
+                              final isOwnerDisabled = ownerShop != null && ownerShop.isDisabled;
+                              final baseShopLabel = p.shopName ??
                                   ownerShop?.name ??
                                   (p.shopId == 'all'
                                       ? 'Danh mục chung hệ thống'
                                       : 'Shop ID: ${p.shopId}');
+                              final shopLabel = isOwnerDisabled
+                                  ? '$baseShopLabel (Shop đã bị vô hiệu hóa ⚠️)'
+                                  : baseShopLabel;
 
                               Color stColor = AppTheme.primary;
                               if (p.isPending) {
@@ -2302,6 +2699,7 @@ class _AdminCommunityChatTabState extends State<_AdminCommunityChatTab> {
   final _searchController = TextEditingController();
   final _timeFormat = DateFormat('dd/MM HH:mm');
   String _searchQuery = '';
+  int _activeSubTab = 0; // 0: Cuộc trò chuyện, 1: Đơn báo cáo vi phạm
 
   @override
   void dispose() {
@@ -2643,7 +3041,7 @@ class _AdminCommunityChatTabState extends State<_AdminCommunityChatTab> {
           children: [
             Expanded(
               child: Container(
-                padding: const EdgeInsets.all(14),
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: AppTheme.surface,
                   borderRadius: BorderRadius.circular(14),
@@ -2652,20 +3050,20 @@ class _AdminCommunityChatTabState extends State<_AdminCommunityChatTab> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Tổng cuộc trò chuyện', style: TextStyle(fontSize: 11.5, color: AppTheme.textMuted)),
+                    const Text('Hội thoại', style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
                     const SizedBox(height: 4),
                     Text(
                       '${allThreads.length}',
-                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppTheme.primary),
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.primary),
                     ),
                   ],
                 ),
               ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 8),
             Expanded(
               child: Container(
-                padding: const EdgeInsets.all(14),
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: AppTheme.surface,
                   borderRadius: BorderRadius.circular(14),
@@ -2674,11 +3072,57 @@ class _AdminCommunityChatTabState extends State<_AdminCommunityChatTab> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Tổng tin nhắn trao đổi', style: TextStyle(fontSize: 11.5, color: AppTheme.textMuted)),
+                    const Text('Tin nhắn', style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
                     const SizedBox(height: 4),
                     Text(
                       '$totalMessages',
-                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppTheme.accent),
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.accent),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppTheme.surface,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: chatProv.pendingReportsCount > 0 ? AppTheme.danger : AppTheme.border,
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Đơn báo cáo', style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Text(
+                          '${chatProv.reports.length}',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: chatProv.pendingReportsCount > 0 ? AppTheme.danger : AppTheme.textPrimary,
+                          ),
+                        ),
+                        if (chatProv.pendingReportsCount > 0) ...[
+                          const SizedBox(width: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                            decoration: BoxDecoration(
+                              color: AppTheme.danger,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              '${chatProv.pendingReportsCount} mới',
+                              style: const TextStyle(fontSize: 9, color: Colors.white, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ],
                 ),
@@ -2686,174 +3130,575 @@ class _AdminCommunityChatTabState extends State<_AdminCommunityChatTab> {
             ),
           ],
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 14),
 
-        // Ô tìm kiếm
-        TextField(
-          controller: _searchController,
-          onChanged: (val) => setState(() => _searchQuery = val.trim()),
-          style: const TextStyle(color: AppTheme.textPrimary, fontSize: 13.5),
-          decoration: InputDecoration(
-            hintText: 'Tìm theo tên shop, nội dung trao đổi...',
-            hintStyle: const TextStyle(color: AppTheme.textMuted, fontSize: 13),
-            prefixIcon: const Icon(Icons.search_rounded, color: AppTheme.textMuted, size: 20),
-            suffixIcon: _searchQuery.isNotEmpty
-                ? IconButton(
-                    icon: const Icon(Icons.clear, size: 18, color: AppTheme.textMuted),
-                    onPressed: () {
-                      _searchController.clear();
-                      setState(() => _searchQuery = '');
-                    },
-                  )
-                : null,
-            filled: true,
-            fillColor: AppTheme.surface,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: const BorderSide(color: AppTheme.border),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: const BorderSide(color: AppTheme.border),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: const BorderSide(color: AppTheme.primary),
-            ),
+        // Subtabs: Cuộc trò chuyện vs Đơn Báo Cáo
+        Container(
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            color: AppTheme.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppTheme.border),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: InkWell(
+                  onTap: () => setState(() => _activeSubTab = 0),
+                  borderRadius: BorderRadius.circular(10),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    decoration: BoxDecoration(
+                      color: _activeSubTab == 0 ? AppTheme.primary : Colors.transparent,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Center(
+                      child: Text(
+                        'Cuộc trò chuyện (${filteredThreads.length})',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: _activeSubTab == 0 ? Colors.black : AppTheme.textSecondary,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Expanded(
+                child: InkWell(
+                  onTap: () => setState(() => _activeSubTab = 1),
+                  borderRadius: BorderRadius.circular(10),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    decoration: BoxDecoration(
+                      color: _activeSubTab == 1 ? AppTheme.danger : Colors.transparent,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Center(
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.gavel_rounded,
+                            size: 14,
+                            color: _activeSubTab == 1 ? Colors.white : AppTheme.danger,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Đơn Báo Cáo (${chatProv.reports.length})',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: _activeSubTab == 1 ? Colors.white : AppTheme.danger,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 14),
 
-        // Danh sách các luồng chat
-        if (filteredThreads.isEmpty)
-          Container(
-            padding: const EdgeInsets.all(32),
-            decoration: BoxDecoration(
-              color: AppTheme.surface,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: AppTheme.border),
-            ),
-            child: const Center(
-              child: Text(
-                'Không tìm thấy cuộc trò chuyện nào phù hợp.',
-                style: TextStyle(color: AppTheme.textMuted),
+        if (_activeSubTab == 0) ...[
+          // Ô tìm kiếm cuộc trò chuyện
+          TextField(
+            controller: _searchController,
+            onChanged: (val) => setState(() => _searchQuery = val.trim()),
+            style: const TextStyle(color: AppTheme.textPrimary, fontSize: 13.5),
+            decoration: InputDecoration(
+              hintText: 'Tìm theo tên shop, nội dung trao đổi...',
+              hintStyle: const TextStyle(color: AppTheme.textMuted, fontSize: 13),
+              prefixIcon: const Icon(Icons.search_rounded, color: AppTheme.textMuted, size: 20),
+              suffixIcon: _searchQuery.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.clear, size: 18, color: AppTheme.textMuted),
+                      onPressed: () {
+                        _searchController.clear();
+                        setState(() => _searchQuery = '');
+                      },
+                    )
+                  : null,
+              filled: true,
+              fillColor: AppTheme.surface,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: const BorderSide(color: AppTheme.border),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: const BorderSide(color: AppTheme.border),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: const BorderSide(color: AppTheme.primary),
               ),
             ),
-          )
-        else
-          ...filteredThreads.map((thread) {
-            return Container(
-              margin: const EdgeInsets.only(bottom: 12),
-              padding: const EdgeInsets.all(14),
+          ),
+          const SizedBox(height: 14),
+
+          // Danh sách các luồng chat
+          if (filteredThreads.isEmpty)
+            Container(
+              padding: const EdgeInsets.all(32),
               decoration: BoxDecoration(
                 color: AppTheme.surface,
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: AppTheme.border),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      CircleAvatar(
-                        radius: 20,
-                        backgroundColor: AppTheme.primaryDark.withOpacity(0.2),
-                        child: Text(
-                          thread.shopName.isNotEmpty ? thread.shopName[0].toUpperCase() : 'S',
-                          style: const TextStyle(
-                            color: AppTheme.primaryDark,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
+              child: const Center(
+                child: Text(
+                  'Không tìm thấy cuộc trò chuyện nào phù hợp.',
+                  style: TextStyle(color: AppTheme.textMuted),
+                ),
+              ),
+            )
+          else
+            ...filteredThreads.map((thread) {
+              return Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: AppTheme.surface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppTheme.border),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 20,
+                          backgroundColor: AppTheme.primaryDark.withOpacity(0.2),
+                          child: Text(
+                            thread.shopName.isNotEmpty ? thread.shopName[0].toUpperCase() : 'S',
+                            style: const TextStyle(
+                              color: AppTheme.primaryDark,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
                           ),
                         ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                thread.shopName,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14.5,
+                                  color: AppTheme.textPrimary,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                '${thread.messages.length} tin nhắn • Cập nhật: ${_timeFormat.format(thread.lastMessageTime)}',
+                                style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: AppTheme.accent.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Text(
+                            'Hoạt động',
+                            style: TextStyle(
+                              color: AppTheme.accent,
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: AppTheme.background,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: AppTheme.border),
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
+                      child: Text(
+                        '💬 Tin gần nhất: "${thread.lastMessage}"',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: AppTheme.textSecondary,
+                          fontStyle: FontStyle.italic,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: () => _showChatTranscriptDialog(context, thread),
+                            icon: const Icon(Icons.visibility_rounded, size: 16),
+                            label: const Text('Xem & Kiểm duyệt', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppTheme.primary,
+                              foregroundColor: Colors.black,
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        IconButton(
+                          tooltip: 'Xóa toàn bộ cuộc trò chuyện',
+                          icon: const Icon(Icons.delete_forever_rounded, color: AppTheme.danger, size: 22),
+                          onPressed: () => _confirmDeleteThread(context, thread),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            }),
+        ] else ...[
+          // ================= TAB ĐƠN BÁO CÁO VI PHẠM TỪ NGƯỜI CHƠI =================
+          if (chatProv.reports.isEmpty)
+            Container(
+              padding: const EdgeInsets.all(36),
+              decoration: BoxDecoration(
+                color: AppTheme.surface,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppTheme.border),
+              ),
+              child: const Column(
+                children: [
+                  Icon(Icons.verified_rounded, size: 40, color: AppTheme.primary),
+                  SizedBox(height: 10),
+                  Text(
+                    'Không có đơn báo cáo vi phạm nào',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppTheme.textPrimary),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    'Tất cả các cuộc trò chuyện và giao dịch đan vợt hiện đều tuân thủ tiêu chuẩn cộng đồng.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                  ),
+                ],
+              ),
+            )
+          else
+            ...chatProv.reports.map((ShopReport report) {
+              final shopProv = context.read<ShopProvider>();
+
+              return Container(
+                margin: const EdgeInsets.only(bottom: 14),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppTheme.surface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: report.isPending ? AppTheme.danger.withOpacity(0.5) : AppTheme.border,
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Header: Shop name & status badge
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: report.isPending
+                                ? AppTheme.danger.withOpacity(0.15)
+                                : AppTheme.primary.withOpacity(0.15),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            report.isPending ? Icons.warning_rounded : Icons.check_circle_rounded,
+                            color: report.isPending ? AppTheme.danger : AppTheme.primary,
+                            size: 20,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Shop bị báo cáo: ${report.shopName}',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14.5,
+                                  color: AppTheme.textPrimary,
+                                ),
+                              ),
+                              Text(
+                                'Thời gian: ${_timeFormat.format(report.createdAt)}',
+                                style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: report.isPending
+                                ? AppTheme.danger.withOpacity(0.15)
+                                : AppTheme.primary.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            report.statusDisplayName,
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              color: report.isPending ? AppTheme.danger : AppTheme.primary,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const Divider(height: 20, color: AppTheme.border),
+
+                    // Reporter details
+                    Row(
+                      children: [
+                        const Icon(Icons.person_outline_rounded, size: 15, color: AppTheme.textMuted),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            'Người khiếu nại: ${report.reporterName} (${report.reporterEmail})',
+                            style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+
+                    // Violation Reason tag
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: AppTheme.danger.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: AppTheme.danger.withOpacity(0.2)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.gavel_rounded, color: AppTheme.danger, size: 16),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Hành vi: ${report.reason}',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: AppTheme.danger,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+
+                    // Description text
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppTheme.background,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: AppTheme.border),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Nội dung phản ánh chi tiết:',
+                            style: TextStyle(fontSize: 11, color: AppTheme.textMuted, fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            report.description,
+                            style: const TextStyle(fontSize: 12.5, color: AppTheme.textPrimary, height: 1.4),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // Evidence if available
+                    if (report.chatEvidence != null && report.chatEvidence!.isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: AppTheme.surfaceLight,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: AppTheme.border),
+                        ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              thread.shopName,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 14.5,
-                                color: AppTheme.textPrimary,
-                              ),
+                            const Row(
+                              children: [
+                                Icon(Icons.chat_bubble_outline_rounded, size: 14, color: AppTheme.accent),
+                                SizedBox(width: 6),
+                                Text(
+                                  'Bằng chứng đoạn chat đính kèm:',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: AppTheme.accent,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(height: 2),
+                            const SizedBox(height: 6),
                             Text(
-                              '${thread.messages.length} tin nhắn • Cập nhật: ${_timeFormat.format(thread.lastMessageTime)}',
-                              style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                              report.chatEvidence!,
+                              style: const TextStyle(
+                                fontSize: 11.5,
+                                color: AppTheme.textSecondary,
+                                fontStyle: FontStyle.italic,
+                                height: 1.3,
+                              ),
                             ),
                           ],
                         ),
                       ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: AppTheme.accent.withOpacity(0.12),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Text(
-                          'Hoạt động',
-                          style: TextStyle(
-                            color: AppTheme.accent,
-                            fontSize: 10.5,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
                     ],
-                  ),
-                  const SizedBox(height: 10),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: AppTheme.background,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: AppTheme.border),
-                    ),
-                    child: Text(
-                      '💬 Tin gần nhất: "${thread.lastMessage}"',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: AppTheme.textSecondary,
-                        fontStyle: FontStyle.italic,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: () => _showChatTranscriptDialog(context, thread),
-                          icon: const Icon(Icons.visibility_rounded, size: 16),
-                          label: const Text('Xem & Kiểm duyệt', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppTheme.primary,
-                            foregroundColor: Colors.black,
-                            padding: const EdgeInsets.symmetric(vertical: 10),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+
+                    const SizedBox(height: 14),
+
+                    // Admin Action Buttons
+                    Row(
+                      children: [
+                        if (report.isPending) ...[
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              onPressed: () {
+                                showDialog(
+                                  context: context,
+                                  builder: (dlgCtx) => AlertDialog(
+                                    backgroundColor: AppTheme.surface,
+                                    title: const Text('Đình chỉ cửa hàng vi phạm?'),
+                                    content: Text(
+                                      'Bạn có chắc chắn muốn đình chỉ/vô hiệu hóa "${report.shopName}" ngay lập tức do có hành vi gian dối theo đơn báo cáo này?',
+                                      style: const TextStyle(fontSize: 13),
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(dlgCtx),
+                                        child: const Text('Hủy'),
+                                      ),
+                                      ElevatedButton(
+                                        onPressed: () async {
+                                          Navigator.pop(dlgCtx);
+                                          // Disable the shop
+                                          await shopProv.approveShop(report.shopId, true);
+                                          // Resolve the report
+                                          await chatProv.resolveReport(
+                                            report.id,
+                                            adminNote: 'Admin đã đình chỉ hoạt động cửa hàng',
+                                          );
+                                          if (context.mounted) {
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              SnackBar(
+                                                content: Text(
+                                                  'Đã đình chỉ hoạt động của shop "${report.shopName}"!',
+                                                ),
+                                                backgroundColor: AppTheme.danger,
+                                              ),
+                                            );
+                                          }
+                                        },
+                                        style: ElevatedButton.styleFrom(backgroundColor: AppTheme.danger),
+                                        child: const Text('Đình chỉ shop'),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                              icon: const Icon(Icons.block_rounded, size: 15),
+                              label: const Text('Đình chỉ Shop', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold)),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppTheme.danger,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 10),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              ),
+                            ),
                           ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: () async {
+                                await chatProv.resolveReport(report.id, adminNote: 'Admin đã xác minh và xử lý thỏa đáng');
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Đã đánh dấu đơn báo cáo là Đã giải quyết!'),
+                                      backgroundColor: AppTheme.primary,
+                                    ),
+                                  );
+                                }
+                              },
+                              icon: const Icon(Icons.check_circle_outline_rounded, size: 15, color: AppTheme.primary),
+                              label: const Text('Đã giải quyết', style: TextStyle(fontSize: 11.5, color: AppTheme.primary)),
+                              style: OutlinedButton.styleFrom(
+                                side: const BorderSide(color: AppTheme.primary),
+                                padding: const EdgeInsets.symmetric(vertical: 10),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              ),
+                            ),
+                          ),
+                        ] else ...[
+                          Expanded(
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              decoration: BoxDecoration(
+                                color: AppTheme.surfaceLight,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Center(
+                                child: Text(
+                                  '✓ Hồ sơ khiếu nại này đã được xử lý',
+                                  style: TextStyle(fontSize: 12, color: AppTheme.primary),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                        const SizedBox(width: 8),
+                        IconButton(
+                          tooltip: 'Xóa đơn báo cáo này',
+                          icon: const Icon(Icons.delete_outline_rounded, color: AppTheme.textMuted, size: 20),
+                          onPressed: () async {
+                            await chatProv.deleteReport(report.id);
+                          },
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      IconButton(
-                        tooltip: 'Xóa toàn bộ cuộc trò chuyện',
-                        icon: const Icon(Icons.delete_forever_rounded, color: AppTheme.danger, size: 22),
-                        onPressed: () => _confirmDeleteThread(context, thread),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            );
-          }),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            }),
+        ],
       ],
     );
   }

@@ -1,9 +1,10 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../../models/shop_model.dart';
 import '../../providers/racket_provider.dart';
 import '../../providers/shop_provider.dart';
 import '../../providers/notification_provider.dart';
-import '../../providers/cart_provider.dart';
 import '../../providers/chat_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../theme/app_theme.dart';
@@ -13,7 +14,6 @@ import '../gear/gear_detail_screen.dart';
 import '../gear/add_edit_racket_screen.dart';
 import '../shop/shop_detail_screen.dart';
 import '../chat/chat_screen.dart';
-import '../cart/cart_screen.dart';
 import '../profile/profile_screen.dart';
 import '../sport/sport_selection_screen.dart';
 
@@ -22,12 +22,35 @@ class HomeDashboardScreen extends StatelessWidget {
 
   const HomeDashboardScreen({super.key, this.onNavigateTab});
 
+  Future<void> _openShopGoogleMaps(BuildContext context, Shop shop) async {
+    final url = Uri.parse(
+      'https://www.google.com/maps/search/?api=1&query=${shop.latitude},${shop.longitude}',
+    );
+    try {
+      final launched = await launchUrl(url, mode: LaunchMode.externalApplication);
+      if (!launched && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Tọa độ ${shop.name}: ${shop.latitude}, ${shop.longitude}'),
+          ),
+        );
+      }
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Tọa độ ${shop.name}: ${shop.latitude}, ${shop.longitude}'),
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final racketProvider = context.watch<RacketProvider>();
     final shopProvider = context.watch<ShopProvider>();
     final notifProvider = context.watch<NotificationProvider>();
-    final cartProvider = context.watch<CartProvider>();
     final authProvider = context.watch<AuthProvider>();
     final currentUser = authProvider.currentUser;
 
@@ -90,40 +113,6 @@ class HomeDashboardScreen extends StatelessWidget {
           ),
         ),
         actions: [
-          // Cart action button
-          Stack(
-            children: [
-              IconButton(
-                icon: const Icon(Icons.shopping_bag_outlined),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const CartScreen()),
-                  );
-                },
-              ),
-              if (cartProvider.itemCount > 0)
-                Positioned(
-                  right: 8,
-                  top: 8,
-                  child: Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: const BoxDecoration(
-                      color: AppTheme.danger,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Text(
-                      '${cartProvider.itemCount}',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ),
           // Notification bell
           Stack(
             children: [
@@ -545,14 +534,19 @@ class HomeDashboardScreen extends StatelessWidget {
                 ShopCard(
                   shop: s,
                   onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => ShopDetailScreen(shopId: s.id),
-                      ),
-                    );
+                    if (s.isVerifiedPartner) {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ShopDetailScreen(shopId: s.id),
+                        ),
+                      );
+                    } else {
+                      _openShopGoogleMaps(context, s);
+                    }
                   },
                   onChatTap: () {
+                    if (!s.isVerifiedPartner) return;
                     final chatProvider = context.read<ChatProvider>();
                     final thread = chatProvider.getOrCreateThreadForShop(
                       s.id,
