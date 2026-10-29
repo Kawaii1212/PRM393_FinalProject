@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../models/user_model.dart';
 import '../../providers/auth_provider.dart';
@@ -6,6 +6,7 @@ import '../../providers/racket_provider.dart';
 import '../../theme/app_theme.dart';
 import '../auth/login_register_screen.dart';
 import '../shop_owner/shop_owner_dashboard_screen.dart';
+import '../injury/injury_history_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -485,6 +486,40 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                   style: ElevatedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 15),
+                  ),
+                ),
+                const SizedBox(height: 14),
+              ],
+
+              // Sổ tay chấn thương & Phục hồi chức năng (Dành cho Player)
+              if (user.role == UserRole.player) ...[
+                OutlinedButton.icon(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const InjuryHistoryScreen(),
+                      ),
+                    );
+                  },
+                  icon: const Icon(
+                    Icons.healing_rounded,
+                    color: AppTheme.primary,
+                  ),
+                  label: const Text(
+                    'Sổ Tay Chấn Thương & Phục Hồi',
+                    style: TextStyle(
+                      color: AppTheme.textPrimary,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    side: const BorderSide(color: AppTheme.primary, width: 1.2),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 14),
