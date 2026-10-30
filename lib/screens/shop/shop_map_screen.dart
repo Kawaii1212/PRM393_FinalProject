@@ -142,16 +142,31 @@ class _ShopMapScreenState extends State<ShopMapScreen> {
   @override
   Widget build(BuildContext context) {
     final shopProvider = context.watch<ShopProvider>();
-    // Lọc các cửa hàng cầu lông theo khoảng cách bán kính đã chọn (mặc định ban đầu là 2 km)
-    final shops = shopProvider.shops
-        .where((s) => s.distanceKm <= _selectedRadiusKm)
-        .toList();
+    const Distance distCalc = Distance();
+    final userLocation = shopProvider.userLocation;
+    final maxMeters = _selectedRadiusKm * 1000.0;
+
+    // Lọc chính xác 100% các cửa hàng cầu lông nằm bên trong vòng tròn bán kính (tính theo mét thực tế)
+    final shops = shopProvider.allShopsForAdmin.where((s) {
+      if (!s.isApproved) return false;
+      final m = distCalc.as(
+        LengthUnit.Meter,
+        userLocation,
+        LatLng(s.latitude, s.longitude),
+      );
+      return m <= maxMeters;
+    }).toList()
+      ..sort((a, b) {
+        final da = distCalc.as(LengthUnit.Meter, userLocation, LatLng(a.latitude, a.longitude));
+        final db = distCalc.as(LengthUnit.Meter, userLocation, LatLng(b.latitude, b.longitude));
+        return da.compareTo(db);
+      });
+
     final rawSelected = shopProvider.selectedShop;
     final selectedShop = (rawSelected != null &&
-            rawSelected.distanceKm <= _selectedRadiusKm)
+            distCalc.as(LengthUnit.Meter, userLocation, LatLng(rawSelected.latitude, rawSelected.longitude)) <= maxMeters)
         ? rawSelected
         : null;
-    final userLocation = shopProvider.userLocation;
 
     return Scaffold(
       appBar: AppBar(
@@ -294,8 +309,8 @@ class _ShopMapScreenState extends State<ShopMapScreen> {
                   // Marker vị trí hiện tại của người dùng
                   Marker(
                     point: userLocation,
-                    width: 86,
-                    height: 52,
+                    width: 90,
+                    height: 56,
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -359,8 +374,8 @@ class _ShopMapScreenState extends State<ShopMapScreen> {
                       if (isSelected) {
                         return Marker(
                           point: LatLng(shop.latitude, shop.longitude),
-                          width: 195,
-                          height: 76,
+                          width: 200,
+                          height: 82,
                           child: GestureDetector(
                             onTap: () => _onShopTapped(shop),
                             child: Column(
@@ -423,8 +438,8 @@ class _ShopMapScreenState extends State<ShopMapScreen> {
                         // Top 3 shop gần nhất: Huy hiệu đánh số 1, 2, 3 gọn gàng, không bị tràn chữ
                         return Marker(
                           point: LatLng(shop.latitude, shop.longitude),
-                          width: 32,
-                          height: 38,
+                          width: 36,
+                          height: 48,
                           child: GestureDetector(
                             onTap: () => _onShopTapped(shop),
                             child: Column(
