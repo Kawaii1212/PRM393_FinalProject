@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -95,7 +96,7 @@ class AuthProvider extends ChangeNotifier {
               await FirebaseAuth.instance.signInWithEmailAndPassword(
             email: normalizedEmail,
             password: password,
-          );
+          ).timeout(const Duration(seconds: 8));
           if (credential.user != null) {
             final userModel =
                 await _fetchOrCreateFirestoreProfile(credential.user!);
@@ -113,37 +114,66 @@ class AuthProvider extends ChangeNotifier {
             notifyListeners();
             return true;
           }
+        } on TimeoutException {
+          debugPrint('Firebase signInWithEmailAndPassword timed out after 8s');
+          final localUser =
+              await _verifyLocalCredentials(normalizedEmail, password);
+          if (localUser != null) {
+            if (localUser.isBlocked) {
+              _errorMessage = 'Tài khoản này đã bị khóa bởi Quản trị viên.';
+              _isLoading = false;
+              notifyListeners();
+              return false;
+            }
+            _currentUser = localUser;
+            final prefs = await SharedPreferences.getInstance();
+            await _saveSessionLocally(localUser, prefs);
+            _isLoading = false;
+            notifyListeners();
+            return true;
+          }
+          _errorMessage =
+              'Không thể kết nối máy chủ Firebase (Quá thời gian chờ - Timeout). Vui lòng kiểm tra lại kết nối Internet trên thiết bị của bạn!';
+          _isLoading = false;
+          notifyListeners();
+          return false;
         } on FirebaseAuthException catch (fbErr) {
-          // Nếu là tài khoản mẫu chưa được tạo trên Firebase, tự động khởi tạo lên Firebase
-          if (_seedAccounts.containsKey(normalizedEmail) &&
-              _seedAccounts[normalizedEmail]!['password'] == password &&
-              (fbErr.code == 'user-not-found' ||
-                  fbErr.code == 'invalid-credential' ||
-                  fbErr.code == 'invalid-login-credentials')) {
-            try {
-              final seedUser = UserModel.fromMap(
-                _seedAccounts[normalizedEmail]!['user'] as Map<String, dynamic>,
-              );
-              final createdCred =
-                  await FirebaseAuth.instance.createUserWithEmailAndPassword(
-                email: normalizedEmail,
-                password: password,
-              );
-              final uid = createdCred.user!.uid;
-              await createdCred.user!.updateDisplayName(seedUser.fullName);
-              final syncedUser = seedUser.copyWith(uid: uid);
-              await _saveProfileToFirestore(syncedUser);
-              _currentUser = syncedUser;
+          if (fbErr.code == 'network-request-failed') {
+            final localUser =
+                await _verifyLocalCredentials(normalizedEmail, password);
+            if (localUser != null) {
+              if (localUser.isBlocked) {
+                _errorMessage = 'Tài khoản này đã bị khóa bởi Quản trị viên.';
+                _isLoading = false;
+                notifyListeners();
+                return false;
+              }
+              _currentUser = localUser;
               final prefs = await SharedPreferences.getInstance();
-              await _saveSessionLocally(syncedUser, prefs);
+              await _saveSessionLocally(localUser, prefs);
               _isLoading = false;
               notifyListeners();
               return true;
-            } catch (_) {
-              // Nếu Firebase Console chưa bật Email/Password, fallback xuống Local
             }
+            _errorMessage =
+                'Mất kết nối Internet (Network error). Vui lòng kiểm tra lại kết nối WiFi / 4G của thiết bị!';
+            _isLoading = false;
+            notifyListeners();
+            return false;
           } else if (fbErr.code == 'wrong-password') {
             _errorMessage = 'Mật khẩu không chính xác. Vui lòng thử lại.';
+            _isLoading = false;
+            notifyListeners();
+            return false;
+          } else if (fbErr.code == 'user-not-found') {
+            _errorMessage = 'Tài khoản chưa tồn tại. Vui lòng đăng ký mới.';
+            _isLoading = false;
+            notifyListeners();
+            return false;
+          } else if (fbErr.code == 'invalid-credential' ||
+              fbErr.code == 'invalid-login-credentials') {
+            _errorMessage =
+                'Email hoặc mật khẩu không chính xác. Vui lòng thử lại.';
             _isLoading = false;
             notifyListeners();
             return false;
@@ -158,7 +188,8 @@ class AuthProvider extends ChangeNotifier {
             notifyListeners();
             return false;
           }
-          // Với lỗi cấu hình hoặc tài khoản lưu local, kiểm tra tiếp ở Local Storage bên dưới
+        } catch (e) {
+          debugPrint('Firebase login unexpected error: $e');
         }
       }
 
@@ -229,13 +260,17 @@ class AuthProvider extends ChangeNotifier {
               await FirebaseAuth.instance.createUserWithEmailAndPassword(
             email: normalizedEmail,
             password: password,
-          );
+          ).timeout(const Duration(seconds: 8));
           if (credential.user != null) {
             uid = credential.user!.uid;
             await credential.user!.updateDisplayName(fullName.trim());
           }
+        } on TimeoutException {
+          debugPrint('Firebase createUserWithEmailAndPassword timed out. Continuing with local creation.');
         } on FirebaseAuthException catch (fbErr) {
-          if (fbErr.code == 'email-already-in-use') {
+          if (fbErr.code == 'network-request-failed') {
+            debugPrint('Firebase network-request-failed. Continuing with local creation.');
+          } else if (fbErr.code == 'email-already-in-use') {
             _errorMessage =
                 'Email này đã được đăng ký. Vui lòng chuyển sang Đăng nhập.';
             _isLoading = false;
@@ -253,6 +288,8 @@ class AuthProvider extends ChangeNotifier {
             return false;
           }
           // Nếu lỗi cấu hình trên Console (vd operation-not-allowed), vẫn cho phép tạo và lưu Firestore + Local
+        } catch (e) {
+          debugPrint('Firebase register unexpected error: $e');
         }
       }
 
@@ -318,10 +355,17 @@ class AuthProvider extends ChangeNotifier {
         try {
           final googleProvider = GoogleAuthProvider();
           final credential =
-              await FirebaseAuth.instance.signInWithProvider(googleProvider);
+              await FirebaseAuth.instance.signInWithProvider(googleProvider).timeout(const Duration(seconds: 12));
           if (credential.user != null) {
             googleUser = await _fetchOrCreateFirestoreProfile(credential.user!);
           }
+        } on TimeoutException {
+          debugPrint('Firebase Google Sign-In timeout');
+          _errorMessage =
+              'Quá thời gian chờ kết nối Google. Vui lòng kiểm tra lại kết nối mạng.';
+          _isLoading = false;
+          notifyListeners();
+          return false;
         } catch (e) {
           debugPrint('Firebase Google Sign-In fallback: $e');
         }
@@ -441,11 +485,19 @@ class AuthProvider extends ChangeNotifier {
 
     try {
       if (_isFirebaseAvailable) {
-        await FirebaseAuth.instance.sendPasswordResetEmail(email: trimmed);
+        await FirebaseAuth.instance
+            .sendPasswordResetEmail(email: trimmed)
+            .timeout(const Duration(seconds: 8));
       }
       _isLoading = false;
       notifyListeners();
       return true;
+    } on TimeoutException {
+      _errorMessage =
+          'Quá thời gian kết nối máy chủ. Vui lòng kiểm tra lại kết nối mạng của bạn.';
+      _isLoading = false;
+      notifyListeners();
+      return false;
     } on FirebaseAuthException catch (e) {
       if (e.code == 'user-not-found') {
         _errorMessage = 'Không tìm thấy tài khoản với Email này.';
