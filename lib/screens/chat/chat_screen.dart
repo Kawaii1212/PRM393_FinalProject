@@ -1,3 +1,5 @@
+import '../../models/user_model.dart';
+import '../../providers/auth_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -250,11 +252,15 @@ class _ChatListScreenState extends State<ChatListScreen> {
                                       ElevatedButton(
                                         onPressed: () {
                                           Navigator.pop(modalCtx);
+                                          final authUser = context.read<AuthProvider>().currentUser;
                                           final chatProv = context.read<ChatProvider>();
                                           final thread = chatProv.getOrCreateThreadForShop(
                                             shop.id,
                                             shop.name,
                                             shop.imageUrl,
+                                            shopOwnerUid: shop.ownerUid,
+                                            userName: authUser?.fullName,
+                                            userEmail: authUser?.email,
                                           );
                                           Navigator.push(
                                             context,
@@ -448,10 +454,14 @@ class _ChatListScreenState extends State<ChatListScreen> {
                             final shop = approvedShops[idx];
                             return InkWell(
                               onTap: () {
+                                final authUser = context.read<AuthProvider>().currentUser;
                                 final thread = chatProvider.getOrCreateThreadForShop(
                                   shop.id,
                                   shop.name,
                                   shop.imageUrl,
+                                  shopOwnerUid: shop.ownerUid,
+                                  userName: authUser?.fullName,
+                                  userEmail: authUser?.email,
                                 );
                                 Navigator.push(
                                   context,
@@ -659,12 +669,16 @@ class _ChatListScreenState extends State<ChatListScreen> {
                         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
                         onTap: () {
                           chatProvider.markThreadAsRead(thread.id);
+                          final authUser = context.read<AuthProvider>().currentUser;
+                          final bool isOwner = authUser?.role == UserRole.stringer ||
+                              (authUser != null && (thread.shopOwnerUid == authUser.uid || thread.shopId == authUser.uid));
                           Navigator.push(
                             context,
                             MaterialPageRoute(
                               builder: (_) => ChatConversationScreen(
                                 threadId: thread.id,
                                 shopId: thread.shopId,
+                                isShopOwner: isOwner,
                               ),
                             ),
                           );
@@ -873,12 +887,17 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
 
     final shopProv = context.read<ShopProvider>();
     final chatProv = context.read<ChatProvider>();
+    final authUser = context.read<AuthProvider>().currentUser;
     final thread = chatProv.getThread(widget.threadId);
     final targetShopId = widget.shopId ?? thread?.shopId ?? '';
     final shop = shopProv.getShopById(targetShopId);
 
+    final bool isShop = widget.isShopOwner ||
+        authUser?.role == UserRole.stringer ||
+        (authUser != null && (thread?.shopOwnerUid == authUser.uid || thread?.shopId == authUser.uid));
+
     // BẮT BUỘC: CHỈ CHO PHÉP NHẮN VỚI SHOP ĐỐI TÁC ĐÃ ĐƯỢC ADMIN PHÊ DUYỆT TRÊN APP (isVerifiedPartner)
-    if (!widget.isShopOwner && (shop == null || !shop.isVerifiedPartner)) {
+    if (!isShop && authUser?.role != UserRole.admin && (shop == null || !shop.isVerifiedPartner)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
@@ -890,7 +909,9 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
       return;
     }
 
-    if (widget.isShopOwner) {
+    if (authUser?.role == UserRole.admin) {
+      chatProv.sendSystemMessage(widget.threadId, '[Admin]: $text');
+    } else if (isShop) {
       chatProv.sendMessageAsShop(widget.threadId, text);
     } else {
       chatProv.sendMessage(widget.threadId, text);
@@ -1037,7 +1058,7 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
                   children: [
                     Flexible(
                       child: Text(
-                        widget.isShopOwner ? 'Tư Vấn Khách Hàng' : thread.shopName,
+                        widget.isShopOwner ? 'Tư Vấn: ${thread.userName ?? "Khách Hàng"}' : thread.shopName,
                         style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -1383,7 +1404,12 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
       );
     }
 
-    final isMe = widget.isShopOwner ? !msg.isFromUser : msg.isFromUser;
+    final authUser = context.read<AuthProvider>().currentUser;
+    final thread = context.read<ChatProvider>().getThread(widget.threadId);
+    final bool isShop = widget.isShopOwner ||
+        authUser?.role == UserRole.stringer ||
+        (authUser != null && (thread?.shopOwnerUid == authUser.uid || thread?.shopId == authUser.uid));
+    final isMe = isShop ? !msg.isFromUser : msg.isFromUser;
 
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,

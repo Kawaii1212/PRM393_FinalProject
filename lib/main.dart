@@ -45,11 +45,18 @@ class GearSportsApp extends StatelessWidget {
         ),
         ChangeNotifierProvider(create: (_) => ShopProvider()),
         ChangeNotifierProvider(create: (_) => CartProvider()),
-        ChangeNotifierProxyProvider<AuthProvider, ChatProvider>(
+        ChangeNotifierProxyProvider2<AuthProvider, ShopProvider, ChatProvider>(
           create: (_) => ChatProvider(),
-          update: (_, auth, chatProv) {
+          update: (_, auth, shopProv, chatProv) {
             final provider = chatProv ?? ChatProvider();
-            provider.syncForUser(auth.currentUser?.uid);
+            final myShop = shopProv.shops
+                .where((s) => s.ownerUid == auth.currentUser?.uid)
+                .firstOrNull;
+            provider.syncForUser(
+              auth.currentUser?.uid,
+              role: auth.currentUser?.role,
+              shopId: myShop?.id,
+            );
             return provider;
           },
         ),

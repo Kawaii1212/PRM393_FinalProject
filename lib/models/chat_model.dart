@@ -51,7 +51,10 @@ class ChatMessage {
 class ChatThread {
   final String id;
   final String userId;
+  final String? userName;
+  final String? userEmail;
   final String shopId;
+  final String? shopOwnerUid;
   final String shopName;
   final String shopAvatar;
   final String lastMessage;
@@ -62,7 +65,10 @@ class ChatThread {
   ChatThread({
     required this.id,
     this.userId = '',
+    this.userName,
+    this.userEmail,
     required this.shopId,
+    this.shopOwnerUid,
     required this.shopName,
     required this.shopAvatar,
     required this.lastMessage,
@@ -75,7 +81,10 @@ class ChatThread {
     return {
       'id': id,
       'userId': userId,
+      'userName': userName,
+      'userEmail': userEmail,
       'shopId': shopId,
+      'shopOwnerUid': shopOwnerUid,
       'shopName': shopName,
       'shopAvatar': shopAvatar,
       'lastMessage': lastMessage,
@@ -85,11 +94,14 @@ class ChatThread {
     };
   }
 
-  factory ChatThread.fromMap(Map<String, dynamic> map) {
+  factory ChatThread.fromMap(Map<String, dynamic> map, {String? docId}) {
     return ChatThread(
-      id: map['id']?.toString() ?? '',
+      id: (docId != null && docId.isNotEmpty) ? docId : (map['id']?.toString() ?? ''),
       userId: map['userId']?.toString() ?? '',
+      userName: map['userName']?.toString(),
+      userEmail: map['userEmail']?.toString(),
       shopId: map['shopId']?.toString() ?? '',
+      shopOwnerUid: map['shopOwnerUid']?.toString(),
       shopName: map['shopName']?.toString() ?? '',
       shopAvatar: map['shopAvatar']?.toString() ?? '',
       lastMessage: map['lastMessage']?.toString() ?? '',
