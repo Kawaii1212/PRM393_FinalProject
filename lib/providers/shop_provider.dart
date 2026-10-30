@@ -1143,63 +1143,112 @@ out center 40;
   }
 
   Future<Map<String, String>> _reverseGeocode(double lat, double lng) async {
+    // 1. Thử giải mã địa chỉ tiếng Việt qua BigDataCloud Free Client Reverse Geocoding API (nhanh, miễn phí, không chặn ở VN)
     try {
       final url = Uri.parse(
-        'https://nominatim.openstreetmap.org/reverse?format=json&lat=$lat&lon=$lng&zoom=17&addressdetails=1&accept-language=vi',
+        'https://api-bdc.io/data/reverse-geocode-client?latitude=$lat&longitude=$lng&localityLanguage=vi',
       );
-      final res = await http.get(
-        url,
-        headers: {'User-Agent': 'GearSportsPRM393App/1.0'},
-      ).timeout(const Duration(seconds: 3));
-
+      final res = await http.get(url).timeout(const Duration(seconds: 4));
       if (res.statusCode == 200) {
-        final data = jsonDecode(res.body) as Map<String, dynamic>;
-        final addr = data['address'] as Map<String, dynamic>? ?? {};
+        final data = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+        final city = data['principalSubdivision']?.toString() ??
+            data['city']?.toString() ??
+            '';
+        final locality = data['locality']?.toString() ?? '';
 
-        final road = addr['road'] ??
-            addr['pedestrian'] ??
-            addr['suburb'] ??
-            addr['neighbourhood'] ??
-            addr['village'] ??
-            '';
-        final ward = addr['quarter'] ??
-            addr['suburb'] ??
-            addr['village'] ??
-            addr['town'] ??
-            '';
-        final district = addr['city_district'] ??
-            addr['district'] ??
-            addr['county'] ??
-            addr['town'] ??
-            'Khu vực lân cận';
-        final city = addr['city'] ??
-            addr['state'] ??
-            addr['province'] ??
-            'Việt Nam';
+        String district = '';
+        if (data['localityInfo'] != null &&
+            data['localityInfo']['administrative'] is List) {
+          final admin = data['localityInfo']['administrative'] as List;
+          for (final item in admin.reversed) {
+            final desc = item['description']?.toString().toLowerCase() ?? '';
+            final name = item['name']?.toString() ?? '';
+            if (desc.contains('quận') ||
+                desc.contains('huyện') ||
+                desc.contains('thị xã') ||
+                desc.contains('thành phố thuộc') ||
+                name.startsWith('Quận') ||
+                name.startsWith('Huyện')) {
+              district = name;
+              break;
+            }
+          }
+        }
 
         final parts = <String>[
-          if (road.toString().isNotEmpty) road.toString(),
-          if (ward.toString().isNotEmpty && ward.toString() != road.toString())
-            ward.toString(),
-          if (district.toString().isNotEmpty) district.toString(),
+          if (locality.isNotEmpty) locality,
+          if (district.isNotEmpty && district != locality) district,
+          if (city.isNotEmpty && city != district) city,
         ];
 
-        final shortAddr = parts.isNotEmpty
-            ? parts.join(', ')
-            : (data['display_name']?.toString().split(',').take(3).join(',') ??
-                'Gần vị trí của bạn');
+        if (parts.isNotEmpty) {
+          return {
+            'shortAddress': parts.join(', '),
+            'district': district.isNotEmpty ? district : locality,
+            'city': city.isNotEmpty ? city : 'Việt Nam',
+          };
+        }
+      }
+    } catch (e) {
+      debugPrint('Reverse geocode BDC note: $e');
+    }
 
+    // 2. Dự phòng: Tìm cửa hàng cầu lông gần nhất trong database để xác định Quận/Huyện và Thành phố
+    try {
+      const Distance distanceCalc = Distance();
+      Shop? nearestShop;
+      double minDistance = double.infinity;
+      for (final s in [...HcmShopData.shops, ...CsvShopData.shops]) {
+        final d = distanceCalc.as(
+          LengthUnit.Kilometer,
+          LatLng(lat, lng),
+          LatLng(s.latitude, s.longitude),
+        );
+        if (d < minDistance) {
+          minDistance = d;
+          nearestShop = s;
+        }
+      }
+
+      if (nearestShop != null && minDistance <= 8.0) {
+        final district = nearestShop.district.isNotEmpty
+            ? nearestShop.district
+            : nearestShop.city;
         return {
-          'shortAddress': shortAddr,
-          'district': district.toString(),
-          'city': city.toString(),
+          'shortAddress': '$district, ${nearestShop.city}',
+          'district': district,
+          'city': nearestShop.city,
         };
       }
     } catch (e) {
-      debugPrint('Reverse geocode fallback: $e');
+      debugPrint('Reverse geocode shop fallback note: $e');
     }
+
+    // 3. Dự phòng theo phân vùng địa lý Việt Nam nếu offline hoàn toàn (Tuyệt đối không hiển thị tọa độ số)
+    if (lat >= 20.0 && lat <= 22.0) {
+      return {
+        'shortAddress': 'Hà Nội',
+        'district': 'Hà Nội',
+        'city': 'Hà Nội',
+      };
+    }
+    if (lat >= 10.0 && lat <= 12.0) {
+      return {
+        'shortAddress': 'TP. Hồ Chí Minh',
+        'district': 'TP. Hồ Chí Minh',
+        'city': 'TP. Hồ Chí Minh',
+      };
+    }
+    if (lat >= 15.5 && lat <= 16.5) {
+      return {
+        'shortAddress': 'Đà Nẵng',
+        'district': 'Đà Nẵng',
+        'city': 'Đà Nẵng',
+      };
+    }
+
     return {
-      'shortAddress': 'Tọa độ ${lat.toStringAsFixed(4)}, ${lng.toStringAsFixed(4)}',
+      'shortAddress': 'Vị trí hiện tại của bạn',
       'district': 'Khu vực lân cận',
       'city': 'Việt Nam',
     };
