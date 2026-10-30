@@ -797,34 +797,40 @@ class _ChatListScreenState extends State<ChatListScreen> {
                               chatProvider.deleteThread(thread.id);
                             }
                           },
-                          itemBuilder: (ctx) => [
-                            const PopupMenuItem(
-                              value: 'report',
-                              child: Row(
-                                children: [
-                                  Icon(Icons.flag_rounded, color: AppTheme.danger, size: 18),
-                                  SizedBox(width: 8),
-                                  Text(
-                                    'Báo cáo shop vi phạm',
-                                    style: TextStyle(color: AppTheme.danger, fontSize: 12.5),
+                          itemBuilder: (ctx) {
+                            final authUser = context.read<AuthProvider>().currentUser;
+                            final bool isPlayer = authUser?.role == UserRole.player;
+                            return [
+                              // Chỉ người chơi mới có chức năng báo cáo Shop, chủ shop không hiển thị nút này
+                              if (isPlayer)
+                                const PopupMenuItem(
+                                  value: 'report',
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.flag_rounded, color: AppTheme.danger, size: 18),
+                                      SizedBox(width: 8),
+                                      Text(
+                                        'Báo cáo shop vi phạm',
+                                        style: TextStyle(color: AppTheme.danger, fontSize: 12.5),
+                                      ),
+                                    ],
                                   ),
-                                ],
+                                ),
+                              const PopupMenuItem(
+                                value: 'delete',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.delete_outline_rounded, color: AppTheme.textMuted, size: 18),
+                                    SizedBox(width: 8),
+                                    Text(
+                                      'Xóa cuộc trò chuyện',
+                                      style: TextStyle(color: AppTheme.textMuted, fontSize: 12.5),
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ),
-                            const PopupMenuItem(
-                              value: 'delete',
-                              child: Row(
-                                children: [
-                                  Icon(Icons.delete_outline_rounded, color: AppTheme.textMuted, size: 18),
-                                  SizedBox(width: 8),
-                                  Text(
-                                    'Xóa cuộc trò chuyện',
-                                    style: TextStyle(color: AppTheme.textMuted, fontSize: 12.5),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
+                            ];
+                          },
                         ),
                       ),
                     );
@@ -929,7 +935,7 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
     });
   }
 
-  void _showShopCredentialsDialog(BuildContext context, Shop? shop, String shopName) {
+  void _showShopCredentialsDialog(BuildContext context, Shop? shop, String shopName, {bool isShop = false}) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -1008,9 +1014,11 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
               ),
             ),
             const SizedBox(height: 12),
-            const Text(
-              'Người chơi được đảm bảo quyền lợi khi giao dịch với cửa hàng đã xác thực. Nếu phát hiện sai phạm hoặc gian dối, bạn có thể lập đơn báo cáo để Admin xử lý.',
-              style: TextStyle(fontSize: 11.5, color: AppTheme.textMuted, height: 1.4),
+            Text(
+              isShop
+                  ? 'Hồ sơ chứng nhận đối tác chính thức được kiểm duyệt bởi Ban Quản Trị GearSports.'
+                  : 'Người chơi được đảm bảo quyền lợi khi giao dịch với cửa hàng đã xác thực. Nếu phát hiện sai phạm hoặc gian dối, bạn có thể lập đơn báo cáo để Admin xử lý.',
+              style: const TextStyle(fontSize: 11.5, color: AppTheme.textMuted, height: 1.4),
             ),
           ],
         ),
@@ -1028,6 +1036,7 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
   Widget build(BuildContext context) {
     final chatProvider = context.watch<ChatProvider>();
     final shopProvider = context.watch<ShopProvider>();
+    final authUser = context.watch<AuthProvider>().currentUser;
     final thread = chatProvider.getThread(widget.threadId);
 
     if (thread == null) {
@@ -1036,6 +1045,12 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
         body: const Center(child: Text('Không tìm thấy cuộc trò chuyện')),
       );
     }
+
+    // Xác định vai trò: nếu là Chủ Shop thì tuyệt đối không hiển thị chức năng báo cáo
+    final bool isShop = widget.isShopOwner ||
+        authUser?.role == UserRole.stringer ||
+        (authUser != null && (thread.shopOwnerUid == authUser.uid || thread.shopId == authUser.uid));
+    final bool isPlayer = !isShop && authUser?.role == UserRole.player;
 
     final targetShopId = widget.shopId ?? thread.shopId;
     final shop = shopProvider.getShopById(targetShopId);
@@ -1046,7 +1061,7 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
       appBar: AppBar(
         titleSpacing: 0,
         title: InkWell(
-          onTap: () => _showShopCredentialsDialog(context, shop, thread.shopName),
+          onTap: () => _showShopCredentialsDialog(context, shop, thread.shopName, isShop: isShop),
           borderRadius: BorderRadius.circular(8),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
@@ -1103,8 +1118,8 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
           ),
         ),
         actions: [
-          // NÚT BÁO CÁO SHOP VI PHẠM / GIAN DỐI DÀNH CHO PLAYER
-          if (!widget.isShopOwner)
+          // NÚT BÁO CÁO SHOP VI PHẠM: CHỈ DÀNH CHO NGƯỜI CHƠI (PLAYER), ẨN HOÀN TOÀN VỚI CHỦ SHOP
+          if (isPlayer)
             IconButton(
               tooltip: 'Làm đơn báo cáo shop vi phạm / gian dối',
               icon: const Icon(Icons.flag_rounded, color: AppTheme.danger),
@@ -1130,14 +1145,14 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
                   threadId: thread.id,
                 );
               } else if (val == 'info') {
-                _showShopCredentialsDialog(context, shop, thread.shopName);
+                _showShopCredentialsDialog(context, shop, thread.shopName, isShop: isShop);
               } else if (val == 'clear') {
                 chatProvider.deleteThread(thread.id);
                 Navigator.pop(context);
               }
             },
             itemBuilder: (ctx) => [
-              if (!widget.isShopOwner)
+              if (isPlayer)
                 const PopupMenuItem(
                   value: 'report',
                   child: Row(
@@ -1183,8 +1198,34 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
       ),
       body: Column(
         children: [
-          // Trust Verification Banner / Warning Banner
-          if (isShopApproved)
+          // Banner đầu trang cuộc trò chuyện:
+          // - Phía Chủ Shop: Hiển thị thông tin khách hàng, KHÔNG có nút/chức năng báo cáo
+          // - Phía Người chơi: Hiển thị chứng nhận shop đối tác và nút báo cáo vi phạm
+          if (isShop)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppTheme.primary.withOpacity(0.08),
+                border: const Border(
+                  bottom: BorderSide(color: AppTheme.border),
+                ),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.storefront_rounded, color: AppTheme.primary, size: 16),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Kênh tư vấn khách hàng: ${thread.userName ?? "Khách hàng"} • Bạn đang phản hồi với tư cách Cửa hàng.',
+                      style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else if (isShopApproved)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               decoration: BoxDecoration(
@@ -1205,27 +1246,28 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  InkWell(
-                    onTap: () {
-                      ShopReportSheet.show(
-                        context,
-                        shopId: targetShopId,
-                        shopName: thread.shopName,
-                        threadId: thread.id,
-                      );
-                    },
-                    child: const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                      child: Text(
-                        'Báo cáo',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: AppTheme.danger,
-                          fontWeight: FontWeight.bold,
+                  if (isPlayer)
+                    InkWell(
+                      onTap: () {
+                        ShopReportSheet.show(
+                          context,
+                          shopId: targetShopId,
+                          shopName: thread.shopName,
+                          threadId: thread.id,
+                        );
+                      },
+                      child: const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                        child: Text(
+                          'Báo cáo',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: AppTheme.danger,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
                     ),
-                  ),
                 ],
               ),
             )
