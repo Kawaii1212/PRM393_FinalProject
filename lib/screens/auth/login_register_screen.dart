@@ -236,7 +236,11 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
           await shopProvider.upsertShop(newShop);
         }
       }
-      await adminProvider.refreshAdminData();
+      try {
+        await adminProvider
+            .refreshAdminData()
+            .timeout(const Duration(seconds: 3));
+      } catch (_) {}
     }
 
     if (!mounted) return;
