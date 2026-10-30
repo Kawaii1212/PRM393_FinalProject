@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -17,10 +16,6 @@ class AuthProvider extends ChangeNotifier {
   String? _errorMessage;
   bool _isFirebaseAvailable = false;
 
-  String? _pendingOtp;
-  String? _pendingOtpEmail;
-  DateTime? _otpExpiresAt;
-
   UserModel? get currentUser => _currentUser;
   bool get isLoggedIn => _currentUser != null;
   bool get isGuest => _currentUser?.uid == 'guest_user' || _currentUser?.email == 'guest@gearsports.vn';
@@ -28,9 +23,6 @@ class AuthProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
   bool get isFirebaseAvailable => _isFirebaseAvailable;
-  String? get pendingOtp => _pendingOtp;
-  String? get pendingOtpEmail => _pendingOtpEmail;
-  bool get hasPendingOtp => _pendingOtp != null;
 
   // Khởi tạo rỗng: Không sử dụng tài khoản mẫu hardcode
   static final Map<String, Map<String, dynamic>> _seedAccounts = {};
@@ -347,123 +339,6 @@ class AuthProvider extends ChangeNotifier {
       notifyListeners();
       return false;
     }
-  }
-
-  /// Gửi mã xác thực OTP 6 số đến email khi người dùng đăng ký tài khoản
-  Future<bool> sendRegistrationOtp({
-    required String email,
-    required String fullName,
-  }) async {
-    _isLoading = true;
-    _errorMessage = null;
-    notifyListeners();
-
-    try {
-      final cleanEmail = email.trim().toLowerCase();
-      final random = Random();
-      final otpCode = (100000 + random.nextInt(900000)).toString();
-      final expiresAt = DateTime.now().add(const Duration(minutes: 5));
-
-      _pendingOtp = otpCode;
-      _pendingOtpEmail = cleanEmail;
-      _otpExpiresAt = expiresAt;
-
-      debugPrint('======================================================');
-      debugPrint('🔑 [GearSports] MÃ XÁC THỰC OTP ĐĂNG KÝ: $otpCode');
-      debugPrint('📧 Gửi tới: $cleanEmail (Hết hạn lúc: $expiresAt)');
-      debugPrint('======================================================');
-
-      if (_isFirebaseAvailable) {
-        try {
-          // 1. Lưu bản ghi mã xác thực vào Firestore collection 'mail_otps'
-          await FirebaseFirestore.instance
-              .collection('mail_otps')
-              .doc(cleanEmail)
-              .set({
-            'email': cleanEmail,
-            'fullName': fullName.trim(),
-            'code': otpCode,
-            'createdAt': FieldValue.serverTimestamp(),
-            'expiresAt': Timestamp.fromDate(expiresAt),
-          });
-
-          // 2. Collection 'mail' chuẩn bị cho Firebase Trigger Email Extension
-          try {
-            await FirebaseFirestore.instance.collection('mail').add({
-              'to': [cleanEmail],
-              'message': {
-                'subject': '[$otpCode] Mã xác thực đăng ký tài khoản GearSports',
-                'text': 'Xin chào $fullName,\n\nMã xác thực OTP đăng ký tài khoản của bạn là: $otpCode.\nMã này có hiệu lực trong vòng 5 phút.\n\nTrân trọng,\nĐội ngũ GearSports',
-                'html': '<div style="font-family:Arial,sans-serif;padding:24px;background:#181A20;color:#FFFFFF;border-radius:12px;max-width:500px;margin:auto;"><h2 style="color:#00E676;margin-bottom:8px;">🏸 GearSports Badminton</h2><p style="color:#B0BEC5;font-size:14px;">Xin chào <b>$fullName</b>,</p><p style="font-size:14px;color:#ECEFF1;">Cảm ơn bạn đã đăng ký tài khoản tại GearSports. Mã xác thực đăng ký của bạn là:</p><div style="text-align:center;padding:16px;background:#262A34;border-radius:8px;margin:20px 0;"><span style="font-size:32px;font-weight:bold;letter-spacing:8px;color:#00E676;">$otpCode</span></div><p style="font-size:12px;color:#90A4AE;">Mã này có hiệu lực trong <b>5 phút</b>. Vui lòng không chia sẻ mã này cho bất kỳ ai.</p></div>',
-              },
-            });
-          } catch (e) {
-            debugPrint('Lỗi trigger email extension: $e');
-          }
-        } catch (e) {
-          debugPrint('Lưu OTP Firestore error: $e');
-        }
-      }
-
-      _isLoading = false;
-      notifyListeners();
-      return true;
-    } catch (e) {
-      debugPrint('sendRegistrationOtp error: $e');
-      _errorMessage = 'Không thể gửi mã xác thực: $e';
-      _isLoading = false;
-      notifyListeners();
-      return false;
-    }
-  }
-
-  /// Xác thực mã OTP người dùng nhập vào
-  bool verifyRegistrationOtp({
-    required String email,
-    required String enteredOtp,
-  }) {
-    final cleanEmail = email.trim().toLowerCase();
-    final cleanOtp = enteredOtp.trim();
-
-    if (_pendingOtp == null || _pendingOtpEmail == null) {
-      _errorMessage = 'Chưa có yêu cầu gửi mã OTP hoặc mã đã hết hạn.';
-      notifyListeners();
-      return false;
-    }
-
-    if (_pendingOtpEmail != cleanEmail) {
-      _errorMessage = 'Email xác thực không khớp với email nhận mã.';
-      notifyListeners();
-      return false;
-    }
-
-    if (_otpExpiresAt != null && DateTime.now().isAfter(_otpExpiresAt!)) {
-      _errorMessage = 'Mã OTP đã hết hạn (quá 5 phút). Vui lòng bấm Gửi lại mã.';
-      notifyListeners();
-      return false;
-    }
-
-    if (_pendingOtp != cleanOtp) {
-      _errorMessage = 'Mã xác thực OTP không chính xác. Vui lòng kiểm tra lại.';
-      notifyListeners();
-      return false;
-    }
-
-    // Xác thực thành công: xóa OTP tạm
-    _pendingOtp = null;
-    _pendingOtpEmail = null;
-    _otpExpiresAt = null;
-    _errorMessage = null;
-    notifyListeners();
-    return true;
-  }
-
-  /// Hủy OTP hiện tại
-  void clearOtp() {
-    _pendingOtp = null;
-    _pendingOtpEmail = null;
-    _otpExpiresAt = null;
-    _errorMessage = null;
   }
 
   /// Đăng nhập nhanh với tư cách Khách (Guest Mode)
