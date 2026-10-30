@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -36,8 +37,12 @@ class ShopProvider with ChangeNotifier {
   bool _isLocating = false;
   bool _hasInitializedLocation = false;
 
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _productsSubscription;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _shopsSubscription;
+
   ShopProvider() {
     syncCatalogFromFirestore();
+    _initRealtimeFirestoreListeners();
     locateUserAndLoadNearbyShops();
   }
 
@@ -238,37 +243,19 @@ class ShopProvider with ChangeNotifier {
             .collection('shops')
             .get()
             .timeout(const Duration(seconds: 6));
-        if (shopSnap.docs.isNotEmpty || _firestoreShops.isEmpty) {
-          final remoteShops = shopSnap.docs
-              .map((d) => Shop.fromMap(d.data(), docId: d.id))
-              .toList();
-          final mergedMap = <String, Shop>{};
-          for (final s in _firestoreShops) {
-            mergedMap[s.id] = s;
-          }
-          for (final s in remoteShops) {
-            mergedMap[s.id] = s;
-          }
-          _firestoreShops = mergedMap.values.toList();
-        }
+        final remoteShops = shopSnap.docs
+            .map((d) => Shop.fromMap(d.data(), docId: d.id))
+            .toList();
+        _firestoreShops = remoteShops;
 
         final prodSnap = await FirebaseFirestore.instance
             .collection('products')
             .get()
             .timeout(const Duration(seconds: 6));
-        if (prodSnap.docs.isNotEmpty || _products.isEmpty) {
-          final remoteProds = prodSnap.docs
-              .map((d) => Product.fromMap(d.data(), docId: d.id))
-              .toList();
-          final mergedProdMap = <String, Product>{};
-          for (final p in _products) {
-            mergedProdMap[p.id] = p;
-          }
-          for (final p in remoteProds) {
-            mergedProdMap[p.id] = p;
-          }
-          _products = mergedProdMap.values.toList();
-        }
+        final remoteProds = prodSnap.docs
+            .map((d) => Product.fromMap(d.data(), docId: d.id))
+            .toList();
+        _products = remoteProds;
 
         await prefs.setString(
           _prefShopsKey,
@@ -1203,5 +1190,54 @@ out center 40;
       'district': 'Khu vực lân cận',
       'city': 'Việt Nam',
     };
+  }
+
+  void _initRealtimeFirestoreListeners() {
+    if (!_isFirebaseReady) return;
+    try {
+      _productsSubscription = FirebaseFirestore.instance
+          .collection('products')
+          .snapshots()
+          .listen((snapshot) async {
+        _products = snapshot.docs
+            .map((d) => Product.fromMap(d.data(), docId: d.id))
+            .toList();
+        notifyListeners();
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(
+          _prefProductsKey,
+          jsonEncode(_products.map((p) => p.toMap()).toList()),
+        );
+      }, onError: (e) {
+        debugPrint('Realtime products listener error: $e');
+      });
+
+      _shopsSubscription = FirebaseFirestore.instance
+          .collection('shops')
+          .snapshots()
+          .listen((snapshot) async {
+        _firestoreShops = snapshot.docs
+            .map((d) => Shop.fromMap(d.data(), docId: d.id))
+            .toList();
+        _mergeFirestoreShopsIntoList();
+        notifyListeners();
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(
+          _prefShopsKey,
+          jsonEncode(_firestoreShops.map((s) => s.toMap()).toList()),
+        );
+      }, onError: (e) {
+        debugPrint('Realtime shops listener error: $e');
+      });
+    } catch (e) {
+      debugPrint('initRealtimeFirestoreListeners error: $e');
+    }
+  }
+
+  @override
+  void dispose() {
+    _productsSubscription?.cancel();
+    _shopsSubscription?.cancel();
+    super.dispose();
   }
 }
