@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../models/user_model.dart';
@@ -147,6 +146,7 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
 
     final authProvider = context.read<AuthProvider>();
     final shopProvider = context.read<ShopProvider>();
+    final adminProvider = context.read<AdminProvider>();
     bool success = false;
 
     if (_isLogin) {
@@ -154,30 +154,8 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
         email: _emailController.text,
         password: _passwordController.text,
       );
-
-      if (!mounted) return;
-
-      if (success) {
-        final user = authProvider.currentUser;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Đăng nhập thành công! Chào mừng ${user?.fullName ?? ""}'),
-            backgroundColor: AppTheme.primaryDark,
-          ),
-        );
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (_) => user?.role == UserRole.admin
-                ? const AdminDashboardScreen()
-                : (user?.role == UserRole.stringer
-                    ? const ShopOwnerDashboardScreen()
-                    : const SportSelectionScreen()),
-          ),
-        );
-      }
     } else {
-      // Đăng ký tài khoản: Kiểm tra thông tin trước khi gửi mã OTP
+      // Đăng ký tài khoản: Kiểm tra thông tin
       if (_selectedRole == UserRole.stringer) {
         if (!_isLocationValid) {
           await _verifyShopLocation();
@@ -210,26 +188,73 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
         }
       }
 
-      // Tạo và gửi mã OTP 6 số qua email
-      final otpSent = await authProvider.sendRegistrationOtp(
-        email: _emailController.text.trim(),
+      success = await authProvider.register(
         fullName: _nameController.text.trim(),
+        phone: _phoneController.text.trim(),
+        email: _emailController.text.trim(),
+        password: _passwordController.text,
+        role: _selectedRole,
+        playStyle: _selectedRole == UserRole.admin
+            ? 'Quản trị viên hệ thống Gear Sports 🛡️'
+            : _selectedRole == UserRole.player
+                ? _playStyleController.text.trim()
+                : 'Chủ cửa hàng ${_shopNameController.text.trim()}',
+        shopName: _selectedRole == UserRole.stringer
+            ? _shopNameController.text.trim()
+            : null,
       );
 
-      if (!mounted) return;
+      // Nếu đăng ký tài khoản Chủ Shop -> Tự động tạo hồ sơ Shop chờ Admin phê duyệt
+      if (success && _selectedRole == UserRole.stringer) {
+        final registeredUser = authProvider.currentUser;
+        if (registeredUser != null) {
+          final currentLoc = shopProvider.userLocation;
+          final resolvedLat = double.tryParse(_shopLatitudeController.text.trim()) ?? currentLoc.latitude;
+          final resolvedLng = double.tryParse(_shopLongitudeController.text.trim()) ?? currentLoc.longitude;
 
-      if (!otpSent) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(authProvider.errorMessage ?? 'Không thể gửi mã xác thực OTP!'),
-            backgroundColor: AppTheme.danger,
-          ),
-        );
-        return;
+          final newShop = Shop(
+            id: 'shop_${registeredUser.uid}',
+            name: _shopNameController.text.trim(),
+            address: _shopAddressController.text.trim(),
+            district: _shopDistrictController.text.trim(),
+            city: _shopCityController.text.trim(),
+            latitude: resolvedLat,
+            longitude: resolvedLng,
+            rating: 5.0,
+            reviewCount: 0,
+            machineModel: _shopMachineController.text.trim(),
+            stringerCert: _shopCertController.text.trim(),
+            phone: _phoneController.text.trim(),
+            openHours: _shopOpenHoursController.text.trim().isEmpty
+                ? '08:00 - 21:30'
+                : _shopOpenHoursController.text.trim(),
+            imageUrl: '',
+            ownerUid: registeredUser.uid,
+            ownerName: registeredUser.fullName,
+            ownerEmail: registeredUser.email,
+            status: 'pending', // Chờ Admin phê duyệt
+          );
+          await shopProvider.upsertShop(newShop);
+        }
       }
 
-      // Hiển thị hộp thoại nhập mã OTP để hoàn tất đăng ký
-      await _showOtpVerificationDialog(context);
+      try {
+        await adminProvider.refreshAdminData().timeout(const Duration(seconds: 3));
+      } catch (_) {}
+    }
+
+    if (!mounted) return;
+
+    if (success) {
+      final user = authProvider.currentUser;
+      _navigateToDashboard(user);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(authProvider.errorMessage ?? (_isLogin ? 'Đăng nhập thất bại!' : 'Đăng ký tài khoản thất bại!')),
+          backgroundColor: AppTheme.danger,
+        ),
+      );
     }
   }
 
@@ -238,7 +263,11 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          'Chào mừng ${user.fullName} (${user.role.displayName})',
+          _isLogin
+              ? 'Đăng nhập thành công! Chào mừng ${user.fullName}'
+              : (user.role == UserRole.stringer
+                  ? 'Đăng ký thành công! Hồ sơ cửa hàng đã được gửi chờ Admin phê duyệt.'
+                  : 'Đăng ký tài khoản thành công! Chào mừng ${user.fullName}'),
         ),
         backgroundColor: AppTheme.primaryDark,
       ),
@@ -254,314 +283,6 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
                 : const SportSelectionScreen()),
       ),
     );
-  }
-
-  /// Hộp thoại xác thực mã OTP gửi về Email trước khi đăng ký
-  Future<void> _showOtpVerificationDialog(BuildContext rootContext) async {
-    final authProvider = rootContext.read<AuthProvider>();
-    final shopProvider = rootContext.read<ShopProvider>();
-    final adminProvider = rootContext.read<AdminProvider>();
-    final targetEmail = _emailController.text.trim();
-    final targetName = _nameController.text.trim();
-
-    final otpController = TextEditingController();
-    String? dialogError;
-    bool isVerifying = false;
-    int resendCooldown = 60;
-    Timer? countdownTimer;
-
-    await showDialog(
-      context: rootContext,
-      barrierDismissible: false,
-      builder: (dialogCtx) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            countdownTimer ??= Timer.periodic(const Duration(seconds: 1), (t) {
-              if (resendCooldown > 0) {
-                setDialogState(() => resendCooldown--);
-              } else {
-                t.cancel();
-              }
-            });
-
-            return AlertDialog(
-              backgroundColor: AppTheme.surface,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-              title: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: AppTheme.primary.withOpacity(0.15),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.mark_email_read_rounded, color: AppTheme.primary, size: 24),
-                  ),
-                  const SizedBox(width: 10),
-                  const Expanded(
-                    child: Text(
-                      'Xác Thực Email OTP',
-                      style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                ],
-              ),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'GearSports đã gửi mã xác thực 6 số đến email đăng ký của bạn:',
-                      style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      targetEmail,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: AppTheme.primary,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    // Hiển thị mã hỗ trợ thử nghiệm (tiện lợi trên máy ảo / test nhanh)
-                    if (authProvider.pendingOtp != null)
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: AppTheme.surfaceLight,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: AppTheme.primary.withOpacity(0.4)),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.vpn_key_rounded, color: AppTheme.primary, size: 16),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: Text(
-                                'Mã OTP thử nghiệm: ${authProvider.pendingOtp}',
-                                style: const TextStyle(fontSize: 12, color: AppTheme.primary, fontWeight: FontWeight.bold),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: otpController,
-                      keyboardType: TextInputType.number,
-                      maxLength: 6,
-                      textAlign: TextAlign.center,
-                      autofocus: true,
-                      style: const TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 8,
-                        color: AppTheme.primary,
-                      ),
-                      decoration: InputDecoration(
-                        counterText: '',
-                        hintText: '• • • • • •',
-                        hintStyle: const TextStyle(letterSpacing: 8, color: AppTheme.textMuted),
-                        filled: true,
-                        fillColor: AppTheme.surfaceLight,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: AppTheme.border),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: AppTheme.primary, width: 2),
-                        ),
-                      ),
-                    ),
-                    if (dialogError != null) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        dialogError!,
-                        style: const TextStyle(color: AppTheme.danger, fontSize: 12),
-                      ),
-                    ],
-                    const SizedBox(height: 14),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        TextButton(
-                          onPressed: resendCooldown > 0
-                              ? null
-                              : () async {
-                                  final ok = await authProvider.sendRegistrationOtp(
-                                    email: targetEmail,
-                                    fullName: targetName,
-                                  );
-                                  if (ok) {
-                                    setDialogState(() {
-                                      resendCooldown = 60;
-                                      dialogError = null;
-                                    });
-                                    if (rootContext.mounted) {
-                                      ScaffoldMessenger.of(rootContext).showSnackBar(
-                                        SnackBar(
-                                          content: Text('Đã gửi lại mã OTP: ${authProvider.pendingOtp}'),
-                                          backgroundColor: AppTheme.primaryDark,
-                                        ),
-                                      );
-                                    }
-                                  }
-                                },
-                          child: Text(
-                            resendCooldown > 0
-                                ? 'Gửi lại mã (${resendCooldown}s)'
-                                : 'Gửi lại mã OTP',
-                            style: TextStyle(
-                              fontSize: 12.5,
-                              color: resendCooldown > 0 ? AppTheme.textMuted : AppTheme.primary,
-                            ),
-                          ),
-                        ),
-                        TextButton(
-                          onPressed: () {
-                            countdownTimer?.cancel();
-                            authProvider.clearOtp();
-                            Navigator.pop(dialogCtx);
-                          },
-                          child: const Text(
-                            'Hủy',
-                            style: TextStyle(fontSize: 12.5, color: AppTheme.textMuted),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: isVerifying
-                        ? null
-                        : () async {
-                            final code = otpController.text.trim();
-                            if (code.length != 6) {
-                              setDialogState(() {
-                                dialogError = 'Vui lòng nhập đủ 6 chữ số mã OTP!';
-                              });
-                              return;
-                            }
-
-                            final isValid = authProvider.verifyRegistrationOtp(
-                              email: targetEmail,
-                              enteredOtp: code,
-                            );
-
-                            if (!isValid) {
-                              setDialogState(() {
-                                dialogError = authProvider.errorMessage ?? 'Mã OTP không chính xác!';
-                              });
-                              return;
-                            }
-
-                            setDialogState(() => isVerifying = true);
-
-                            // Thực hiện đăng ký tài khoản chính thức
-                            final regSuccess = await authProvider.register(
-                              fullName: _nameController.text.trim(),
-                              phone: _phoneController.text.trim(),
-                              email: _emailController.text.trim(),
-                              password: _passwordController.text,
-                              role: _selectedRole,
-                              playStyle: _selectedRole == UserRole.admin
-                                  ? 'Quản trị viên hệ thống Gear Sports 🛡️'
-                                  : _selectedRole == UserRole.player
-                                      ? _playStyleController.text.trim()
-                                      : 'Chủ cửa hàng ${_shopNameController.text.trim()}',
-                              shopName: _selectedRole == UserRole.stringer
-                                  ? _shopNameController.text.trim()
-                                  : null,
-                            );
-
-                            if (regSuccess && _selectedRole == UserRole.stringer) {
-                              final registeredUser = authProvider.currentUser;
-                              if (registeredUser != null) {
-                                final currentLoc = shopProvider.userLocation;
-                                final resolvedLat = double.tryParse(_shopLatitudeController.text.trim()) ?? currentLoc.latitude;
-                                final resolvedLng = double.tryParse(_shopLongitudeController.text.trim()) ?? currentLoc.longitude;
-
-                                final newShop = Shop(
-                                  id: 'shop_${registeredUser.uid}',
-                                  name: _shopNameController.text.trim(),
-                                  address: _shopAddressController.text.trim(),
-                                  district: _shopDistrictController.text.trim(),
-                                  city: _shopCityController.text.trim(),
-                                  latitude: resolvedLat,
-                                  longitude: resolvedLng,
-                                  rating: 5.0,
-                                  reviewCount: 0,
-                                  machineModel: _shopMachineController.text.trim(),
-                                  stringerCert: _shopCertController.text.trim(),
-                                  phone: _phoneController.text.trim(),
-                                  openHours: _shopOpenHoursController.text.trim().isEmpty
-                                      ? '08:00 - 21:30'
-                                      : _shopOpenHoursController.text.trim(),
-                                  imageUrl: '',
-                                  ownerUid: registeredUser.uid,
-                                  ownerName: registeredUser.fullName,
-                                  ownerEmail: registeredUser.email,
-                                  status: 'pending',
-                                );
-                                await shopProvider.upsertShop(newShop);
-                              }
-                            }
-
-                            try {
-                              await adminProvider.refreshAdminData().timeout(const Duration(seconds: 3));
-                            } catch (_) {}
-
-                            countdownTimer?.cancel();
-                            if (!dialogCtx.mounted) return;
-                            Navigator.pop(dialogCtx);
-
-                            if (regSuccess) {
-                              final user = authProvider.currentUser;
-                              _navigateToDashboard(user);
-                            } else {
-                              if (rootContext.mounted) {
-                                ScaffoldMessenger.of(rootContext).showSnackBar(
-                                  SnackBar(
-                                    content: Text(authProvider.errorMessage ?? 'Đăng ký tài khoản thất bại!'),
-                                    backgroundColor: AppTheme.danger,
-                                  ),
-                                );
-                              }
-                            }
-                          },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primary,
-                      foregroundColor: Colors.black,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    child: isVerifying
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
-                          )
-                        : const Text(
-                            'Xác Nhận & Hoàn Tất Đăng Ký',
-                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                          ),
-                  ),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-    countdownTimer?.cancel();
   }
 
   Future<void> _handleGuestSignIn() async {
