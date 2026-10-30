@@ -12,28 +12,33 @@ import '../chat/chat_screen.dart';
 
 enum MapStyleMode {
   osmStandard,
-  cartoVoyager,
-  cartoDark;
+  osmFrance,
+  osmTopo,
+  googleRoadmap;
 
   String get label {
     switch (this) {
       case MapStyleMode.osmStandard:
-        return 'OpenStreetMap (Tiêu chuẩn)';
-      case MapStyleMode.cartoVoyager:
-        return 'Bản đồ Sáng (Voyager)';
-      case MapStyleMode.cartoDark:
-        return 'Bản đồ Tối (Dark Mode)';
+        return 'OpenStreetMap (Đức / FOSSGIS)';
+      case MapStyleMode.osmFrance:
+        return 'OpenStreetMap (Pháp / OSM-FR)';
+      case MapStyleMode.osmTopo:
+        return 'OpenStreetMap (Địa hình Topo)';
+      case MapStyleMode.googleRoadmap:
+        return 'Google Maps (Đường phố)';
     }
   }
 
   String get urlTemplate {
     switch (this) {
       case MapStyleMode.osmStandard:
-        return 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
-      case MapStyleMode.cartoVoyager:
-        return 'https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png';
-      case MapStyleMode.cartoDark:
-        return 'https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png';
+        return 'https://tile.openstreetmap.de/{z}/{x}/{y}.png';
+      case MapStyleMode.osmFrance:
+        return 'https://a.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png';
+      case MapStyleMode.osmTopo:
+        return 'https://a.tile.opentopomap.org/{z}/{x}/{y}.png';
+      case MapStyleMode.googleRoadmap:
+        return 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}';
     }
   }
 }
@@ -117,7 +122,7 @@ class _ShopMapScreenState extends State<ShopMapScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Tọa độ của ${shop.name}: ${shop.latitude.toStringAsFixed(4)}, ${shop.longitude.toStringAsFixed(4)}',
+              'Địa chỉ của ${shop.name}: ${shop.address}',
             ),
           ),
         );
@@ -127,7 +132,7 @@ class _ShopMapScreenState extends State<ShopMapScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Tọa độ của ${shop.name}: ${shop.latitude.toStringAsFixed(4)}, ${shop.longitude.toStringAsFixed(4)}',
+            'Địa chỉ của ${shop.name}: ${shop.address}',
           ),
         ),
       );
@@ -150,7 +155,7 @@ class _ShopMapScreenState extends State<ShopMapScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Cửa Hàng Cầu Lông Gần Bạn'),
+        title: const Text('Cửa Hàng Cầu Lông'),
         actions: [
           // Nút chuyển kiểu giao diện bản đồ (OpenStreetMap / Voyager / Dark)
           PopupMenuButton<MapStyleMode>(
@@ -249,7 +254,9 @@ class _ShopMapScreenState extends State<ShopMapScreen> {
             children: [
               TileLayer(
                 urlTemplate: _mapStyle.urlTemplate,
-                userAgentPackageName: 'com.example.finalproject',
+                userAgentPackageName: 'vn.edu.fpt.prm393.gearsports',
+                maxNativeZoom: 18,
+                maxZoom: 19,
               ),
 
               // Vòng tròn bán kính hiển thị các shop cầu lông quanh người dùng (mặc định 2 km)
@@ -259,9 +266,9 @@ class _ShopMapScreenState extends State<ShopMapScreen> {
                     point: userLocation,
                     radius: _selectedRadiusKm * 1000,
                     useRadiusInMeter: true,
-                    color: AppTheme.primary.withOpacity(0.10),
-                    borderColor: AppTheme.primaryDark.withOpacity(0.55),
-                    borderStrokeWidth: 1.8,
+                    color: AppTheme.primary.withOpacity(0.08),
+                    borderColor: AppTheme.primaryDark.withOpacity(0.70),
+                    borderStrokeWidth: 1.5,
                   ),
                 ],
               ),
@@ -287,19 +294,19 @@ class _ShopMapScreenState extends State<ShopMapScreen> {
                   // Marker vị trí hiện tại của người dùng
                   Marker(
                     point: userLocation,
-                    width: 115,
-                    height: 62,
+                    width: 86,
+                    height: 52,
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Container(
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 3,
+                            horizontal: 6,
+                            vertical: 2,
                           ),
                           decoration: BoxDecoration(
                             color: AppTheme.accent,
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(10),
                             boxShadow: const [
                               BoxShadow(
                                 color: Colors.black45,
@@ -312,15 +319,15 @@ class _ShopMapScreenState extends State<ShopMapScreen> {
                             'Vị trí của bạn',
                             style: TextStyle(
                               color: Colors.black,
-                              fontSize: 10,
+                              fontSize: 9.5,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
                         ),
-                        const SizedBox(height: 3),
+                        const SizedBox(height: 2),
                         Container(
-                          width: 24,
-                          height: 24,
+                          width: 20,
+                          height: 20,
                           decoration: BoxDecoration(
                             color: AppTheme.accent.withOpacity(0.3),
                             shape: BoxShape.circle,
@@ -328,8 +335,8 @@ class _ShopMapScreenState extends State<ShopMapScreen> {
                           ),
                           child: Center(
                             child: Container(
-                              width: 12,
-                              height: 12,
+                              width: 10,
+                              height: 10,
                               decoration: const BoxDecoration(
                                 color: AppTheme.accent,
                                 shape: BoxShape.circle,
@@ -413,28 +420,25 @@ class _ShopMapScreenState extends State<ShopMapScreen> {
                           ),
                         );
                       } else if (isTop3) {
+                        // Top 3 shop gần nhất: Huy hiệu đánh số 1, 2, 3 gọn gàng, không bị tràn chữ
                         return Marker(
                           point: LatLng(shop.latitude, shop.longitude),
-                          width: 145,
-                          height: 60,
+                          width: 32,
+                          height: 38,
                           child: GestureDetector(
                             onTap: () => _onShopTapped(shop),
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 3,
-                                  ),
+                                  width: 26,
+                                  height: 26,
                                   decoration: BoxDecoration(
-                                    color: isPartner
-                                        ? AppTheme.primary.withOpacity(0.92)
-                                        : AppTheme.surface.withOpacity(0.95),
-                                    borderRadius: BorderRadius.circular(16),
+                                    color: isPartner ? AppTheme.primary : AppTheme.surface,
+                                    shape: BoxShape.circle,
                                     border: Border.all(
-                                      color: isPartner ? AppTheme.primaryDark : AppTheme.border,
-                                      width: isPartner ? 1.4 : 1.0,
+                                      color: isPartner ? Colors.black : AppTheme.primaryDark,
+                                      width: 1.8,
                                     ),
                                     boxShadow: const [
                                       BoxShadow(
@@ -444,45 +448,32 @@ class _ShopMapScreenState extends State<ShopMapScreen> {
                                       ),
                                     ],
                                   ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        isPartner ? Icons.verified_rounded : Icons.place_outlined,
-                                        color: isPartner ? Colors.black : AppTheme.textMuted,
-                                        size: 11,
+                                  child: Center(
+                                    child: Text(
+                                      '${i + 1}',
+                                      style: TextStyle(
+                                        color: isPartner ? Colors.black : AppTheme.textPrimary,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
                                       ),
-                                      const SizedBox(width: 3),
-                                      Flexible(
-                                        child: Text(
-                                          '${shop.name.split('-').first.trim()} • ${shop.distanceKm}km',
-                                          style: TextStyle(
-                                            color: isPartner ? Colors.black : AppTheme.textPrimary,
-                                            fontSize: 10,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                    ],
+                                    ),
                                   ),
                                 ),
                                 Icon(
-                                  Icons.location_on_rounded,
-                                  color: isPartner ? AppTheme.primary : Colors.blueGrey,
-                                  size: 26,
+                                  Icons.arrow_drop_down_rounded,
+                                  color: isPartner ? AppTheme.primary : AppTheme.surface,
+                                  size: 14,
                                 ),
                               ],
                             ),
                           ),
                         );
                       } else {
-                        // Shop thường: phân biệt icon rõ ràng
+                        // Shop thường: icon ghim tròn nhỏ gọn
                         return Marker(
                           point: LatLng(shop.latitude, shop.longitude),
-                          width: isPartner ? 34 : 26,
-                          height: isPartner ? 34 : 26,
+                          width: isPartner ? 28 : 22,
+                          height: isPartner ? 28 : 22,
                           child: GestureDetector(
                             onTap: () => _onShopTapped(shop),
                             child: Container(
@@ -496,8 +487,8 @@ class _ShopMapScreenState extends State<ShopMapScreen> {
                                 boxShadow: const [
                                   BoxShadow(
                                     color: Colors.black45,
-                                    blurRadius: 4,
-                                    offset: Offset(0, 2),
+                                    blurRadius: 3,
+                                    offset: Offset(0, 1),
                                   ),
                                 ],
                               ),
@@ -505,7 +496,7 @@ class _ShopMapScreenState extends State<ShopMapScreen> {
                                 child: Icon(
                                   isPartner ? Icons.storefront_rounded : Icons.place_outlined,
                                   color: isPartner ? AppTheme.primary : Colors.blueGrey,
-                                  size: isPartner ? 18 : 13,
+                                  size: isPartner ? 15 : 11,
                                 ),
                               ),
                             ),
