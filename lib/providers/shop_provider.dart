@@ -289,12 +289,14 @@ class ShopProvider with ChangeNotifier {
   void _mergeFirestoreShopsIntoList() {
     const Distance distanceCalc = Distance();
     final updatedFirestore = _firestoreShops.map((s) {
-      final dist = distanceCalc.as(
-        LengthUnit.Kilometer,
+      final distMeters = distanceCalc.as(
+        LengthUnit.Meter,
         _userLocation,
         LatLng(s.latitude, s.longitude),
       );
-      return s.copyWith(distanceKm: double.parse(dist.toStringAsFixed(1)));
+      return s.copyWith(
+        distanceKm: double.parse((distMeters / 1000.0).toStringAsFixed(1)),
+      );
     }).toList();
 
     _firestoreShops = updatedFirestore;
@@ -758,12 +760,14 @@ class ShopProvider with ChangeNotifier {
 
     // 3. Tính khoảng cách thực tế từ vị trí người dùng đến từng shop
     final computedShops = baseShopMap.values.map((s) {
-      final distKm = distanceCalc.as(
-        LengthUnit.Kilometer,
+      final distMeters = distanceCalc.as(
+        LengthUnit.Meter,
         center,
         LatLng(s.latitude, s.longitude),
       );
-      return s.copyWith(distanceKm: double.parse(distKm.toStringAsFixed(1)));
+      return s.copyWith(
+        distanceKm: double.parse((distMeters / 1000.0).toStringAsFixed(1)),
+      );
     }).toList();
 
     _discoveredShops = computedShops;
