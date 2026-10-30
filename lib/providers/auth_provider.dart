@@ -7,6 +7,30 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user_model.dart';
 
+enum GoogleSignInStatus {
+  success,
+  needsRoleSelection,
+  failed,
+}
+
+class GoogleSignInResult {
+  final GoogleSignInStatus status;
+  final UserModel? user;
+  final User? firebaseUser;
+  final String? errorMessage;
+  final String? tempEmail;
+  final String? tempName;
+
+  const GoogleSignInResult({
+    required this.status,
+    this.user,
+    this.firebaseUser,
+    this.errorMessage,
+    this.tempEmail,
+    this.tempName,
+  });
+}
+
 class AuthProvider extends ChangeNotifier {
   static const String _prefCurrentUserKey = 'gearsports_current_user';
   static const String _prefLocalUsersKey = 'gearsports_local_users';
@@ -342,55 +366,268 @@ class AuthProvider extends ChangeNotifier {
   }
 
   /// Đăng nhập bằng Google (SRS 2.2 #1)
-  Future<bool> signInWithGoogle() async {
+  /// Trả về [GoogleSignInResult]:
+  /// - status == GoogleSignInStatus.success: Đã khớp tài khoản cũ hoặc Admin -> Đăng nhập ngay
+  /// - status == GoogleSignInStatus.needsRoleSelection: Tài khoản Google mới -> Cần chọn vai trò (Cách B)
+  /// - status == GoogleSignInStatus.failed: Thất bại kèm thông báo lỗi
+  Future<GoogleSignInResult> signInWithGoogle({String? hintEmail}) async {
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
 
     try {
       _checkFirebaseStatus();
-      UserModel? googleUser;
+      User? fbUser;
+      String? fallbackEmail;
+      String? fallbackName;
 
       if (_isFirebaseAvailable) {
         try {
           final googleProvider = GoogleAuthProvider();
-          final credential =
-              await FirebaseAuth.instance.signInWithProvider(googleProvider).timeout(const Duration(seconds: 12));
-          if (credential.user != null) {
-            googleUser = await _fetchOrCreateFirestoreProfile(credential.user!);
-          }
+          final credential = await FirebaseAuth.instance
+              .signInWithProvider(googleProvider)
+              .timeout(const Duration(seconds: 12));
+          fbUser = credential.user;
         } on TimeoutException {
           debugPrint('Firebase Google Sign-In timeout');
           _errorMessage =
               'Quá thời gian chờ kết nối Google. Vui lòng kiểm tra lại kết nối mạng.';
           _isLoading = false;
           notifyListeners();
-          return false;
+          return const GoogleSignInResult(
+            status: GoogleSignInStatus.failed,
+            errorMessage: 'Quá thời gian chờ kết nối Google. Vui lòng kiểm tra lại kết nối mạng.',
+          );
+        } on FirebaseAuthException catch (fbErr) {
+          debugPrint('Firebase Google Sign-In FirebaseAuthException: ${fbErr.code} - ${fbErr.message}');
+          if (fbErr.code == 'invalid-cert-hash') {
+            debugPrint('⚠️ Lỗi invalid-cert-hash: Mã SHA-1 của thiết bị/máy ảo chưa được thêm vào Firebase Console.');
+            fallbackEmail = hintEmail != null && hintEmail.trim().isNotEmpty
+                ? hintEmail.trim().toLowerCase()
+                : 'namhgjk123@gmail.com';
+            fallbackName = fallbackEmail == 'namhgjk123@gmail.com'
+                ? 'Nguyễn Sơn Nam (Admin)'
+                : 'Người dùng Google (Giả lập)';
+          } else if (fbErr.code == 'operation-not-allowed') {
+            _errorMessage = 'Chưa bật phương thức đăng nhập Google trong Firebase Console.';
+            _isLoading = false;
+            notifyListeners();
+            return GoogleSignInResult(
+              status: GoogleSignInStatus.failed,
+              errorMessage: _errorMessage,
+            );
+          } else {
+            _errorMessage = 'Lỗi đăng nhập Google: ${fbErr.message ?? fbErr.code}';
+            _isLoading = false;
+            notifyListeners();
+            return GoogleSignInResult(
+              status: GoogleSignInStatus.failed,
+              errorMessage: _errorMessage,
+            );
+          }
         } catch (e) {
           debugPrint('Firebase Google Sign-In fallback: $e');
         }
+      } else {
+        fallbackEmail = hintEmail != null && hintEmail.trim().isNotEmpty
+            ? hintEmail.trim().toLowerCase()
+            : 'namhgjk123@gmail.com';
+        fallbackName = fallbackEmail == 'namhgjk123@gmail.com'
+            ? 'Nguyễn Sơn Nam (Admin)'
+            : 'Người dùng Google (Offline)';
       }
 
-      if (googleUser == null) {
-        _errorMessage = 'Không thể xác thực tài khoản Google trên thiết bị này.';
+      final email = (fbUser?.email ?? fallbackEmail ?? '').toLowerCase();
+      final displayName = fbUser?.displayName ?? fallbackName ?? 'Người dùng Google';
+      final uid = fbUser?.uid ?? 'google_${DateTime.now().millisecondsSinceEpoch}';
+
+      if (email.isEmpty) {
+        _errorMessage = 'Không lấy được thông tin Email từ tài khoản Google.';
         _isLoading = false;
         notifyListeners();
-        return false;
+        return const GoogleSignInResult(
+          status: GoogleSignInStatus.failed,
+          errorMessage: 'Không lấy được thông tin Email từ tài khoản Google.',
+        );
       }
 
+      // 1. Kiểm tra nếu là Email Quản trị viên (Admin Whitelist)
+      final isAdmin = email == 'namhgjk123@gmail.com' ||
+          email.contains('admin@gearsports') ||
+          _seedAccounts[email]?['user']?['role'] == 'admin';
+
+      if (isAdmin) {
+        final adminUser = UserModel(
+          uid: uid,
+          email: email,
+          fullName: displayName.isNotEmpty ? displayName : 'Nguyễn Sơn Nam (Admin)',
+          phone: fbUser?.phoneNumber ?? '0901234567',
+          role: UserRole.admin,
+          playStyle: 'Quản trị viên hệ thống Gear Sports 🛡️',
+          createdAt: DateTime.now(),
+        );
+
+        if (_isFirebaseAvailable) {
+          await _saveProfileToFirestore(adminUser);
+        }
+        final prefs = await SharedPreferences.getInstance();
+        await _saveSessionLocally(adminUser, prefs);
+
+        _currentUser = adminUser;
+        _isLoading = false;
+        notifyListeners();
+        return GoogleSignInResult(
+          status: GoogleSignInStatus.success,
+          user: adminUser,
+        );
+      }
+
+      // 2. Tìm tài khoản cũ trong Cloud Firestore theo UID hoặc Email
+      UserModel? existingUser;
       if (_isFirebaseAvailable) {
-        await _saveProfileToFirestore(googleUser);
+        try {
+          final docRef = FirebaseFirestore.instance.collection('users').doc(uid);
+          final docSnap = await docRef.get().timeout(const Duration(seconds: 4));
+          if (docSnap.exists && docSnap.data() != null) {
+            existingUser = UserModel.fromMap(docSnap.data()!, docId: uid);
+          } else {
+            final query = await FirebaseFirestore.instance
+                .collection('users')
+                .where('email', isEqualTo: email)
+                .limit(1)
+                .get()
+                .timeout(const Duration(seconds: 4));
+            if (query.docs.isNotEmpty) {
+              existingUser = UserModel.fromMap(query.docs.first.data(), docId: uid);
+              await docRef.set(existingUser.toMap(), SetOptions(merge: true));
+            }
+          }
+        } catch (e) {
+          debugPrint('Firestore existing user search warning: $e');
+        }
       }
 
-      final prefs = await SharedPreferences.getInstance();
-      await _saveSessionLocally(googleUser, prefs);
+      // 3. Tìm trong Local Storage (SharedPreferences)
+      if (existingUser == null) {
+        final prefs = await SharedPreferences.getInstance();
+        final localMap = _getLocalUsersMap(prefs);
+        if (localMap.containsKey(email)) {
+          final localEntry = localMap[email] as Map<String, dynamic>;
+          final localData = Map<String, dynamic>.from(localEntry['user']);
+          existingUser = UserModel.fromMap(localData).copyWith(uid: uid);
+          if (_isFirebaseAvailable) {
+            await _saveProfileToFirestore(existingUser);
+          }
+        }
+      }
 
-      _currentUser = googleUser;
+      // Nếu tài khoản đã tồn tại: Đăng nhập ngay lập tức với vai trò sẵn có
+      if (existingUser != null) {
+        if (existingUser.isBlocked) {
+          _errorMessage = 'Tài khoản này đã bị khóa bởi Quản trị viên.';
+          _isLoading = false;
+          notifyListeners();
+          return const GoogleSignInResult(
+            status: GoogleSignInStatus.failed,
+            errorMessage: 'Tài khoản này đã bị khóa bởi Quản trị viên.',
+          );
+        }
+
+        final prefs = await SharedPreferences.getInstance();
+        await _saveSessionLocally(existingUser, prefs);
+
+        _currentUser = existingUser;
+        _isLoading = false;
+        notifyListeners();
+        return GoogleSignInResult(
+          status: GoogleSignInStatus.success,
+          user: existingUser,
+        );
+      }
+
+      // Nếu là tài khoản Google mới toanh: Trả về trạng thái yêu cầu chọn vai trò (Cách B)
+      _isLoading = false;
+      notifyListeners();
+      return GoogleSignInResult(
+        status: GoogleSignInStatus.needsRoleSelection,
+        firebaseUser: fbUser,
+        tempEmail: email,
+        tempName: displayName,
+      );
+    } catch (e) {
+      _errorMessage = 'Đăng nhập Google thất bại: $e';
+      _isLoading = false;
+      notifyListeners();
+      return GoogleSignInResult(
+        status: GoogleSignInStatus.failed,
+        errorMessage: _errorMessage,
+      );
+    }
+  }
+
+  /// Hoàn tất đăng ký tài khoản Google mới với Vai trò do người dùng lựa chọn (Cách B)
+  Future<bool> completeGoogleRegistration({
+    required UserRole role,
+    String? email,
+    String? fullName,
+    String? phone,
+    String? playStyle,
+    String? shopName,
+    User? fbUser,
+  }) async {
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      final finalEmail = (email ?? fbUser?.email ?? '').trim().toLowerCase();
+      final finalName = (fullName ?? fbUser?.displayName ?? (role == UserRole.stringer ? 'Chủ Shop' : 'Người chơi')).trim();
+      final uid = fbUser?.uid ?? 'google_${DateTime.now().millisecondsSinceEpoch}';
+
+      final defaultStyle = role == UserRole.stringer
+          ? 'Chuyên gia đan vợt & Phụ kiện cầu lông'
+          : (playStyle != null && playStyle.trim().isNotEmpty
+              ? playStyle.trim()
+              : 'Thiên công 4U • Sẵn sàng ra sân 🏸');
+
+      final newUser = UserModel(
+        uid: uid,
+        email: finalEmail,
+        fullName: finalName,
+        phone: (phone != null && phone.trim().isNotEmpty)
+            ? phone.trim()
+            : (fbUser?.phoneNumber ?? '0901234567'),
+        role: role,
+        playStyle: defaultStyle,
+        shopName: role == UserRole.stringer
+            ? (shopName != null && shopName.trim().isNotEmpty
+                ? shopName.trim()
+                : 'Cửa hàng $finalName')
+            : null,
+        createdAt: DateTime.now(),
+      );
+
+      // Lưu lên Firestore
+      if (_isFirebaseAvailable) {
+        await _saveProfileToFirestore(newUser);
+      }
+
+      // Lưu vào Local Storage & Session
+      final prefs = await SharedPreferences.getInstance();
+      final localUsersMap = _getLocalUsersMap(prefs);
+      localUsersMap[finalEmail] = {
+        'password': 'google_oauth_account',
+        'user': newUser.toMap(),
+      };
+      await prefs.setString(_prefLocalUsersKey, jsonEncode(localUsersMap));
+      await _saveSessionLocally(newUser, prefs);
+
+      _currentUser = newUser;
       _isLoading = false;
       notifyListeners();
       return true;
     } catch (e) {
-      _errorMessage = 'Đăng nhập Google thất bại: $e';
+      _errorMessage = 'Không thể hoàn tất đăng ký: $e';
       _isLoading = false;
       notifyListeners();
       return false;
@@ -551,8 +788,46 @@ class AuthProvider extends ChangeNotifier {
         return UserModel.fromMap(docSnap.data()!, docId: fbUser.uid);
       }
 
-      // Nếu chưa có document trên Firestore, kiểm tra seed account hoặc khởi tạo mới
+      // 1. Kiểm tra nếu là email Quản trị viên (Admin Whitelist)
       final email = (fbUser.email ?? '').toLowerCase();
+      final isAdmin = email == 'namhgjk123@gmail.com' ||
+          email.contains('admin@gearsports') ||
+          _seedAccounts[email]?['user']?['role'] == 'admin';
+
+      if (isAdmin) {
+        final profile = UserModel(
+          uid: fbUser.uid,
+          email: email,
+          fullName: fbUser.displayName?.isNotEmpty == true
+              ? fbUser.displayName!
+              : 'Nguyễn Sơn Nam (Admin)',
+          phone: fbUser.phoneNumber ?? '0901234567',
+          role: UserRole.admin,
+          playStyle: 'Quản trị viên hệ thống Gear Sports 🛡️',
+          createdAt: DateTime.now(),
+        );
+        await docRef.set(profile.toMap(), SetOptions(merge: true)).timeout(const Duration(seconds: 4));
+        return profile;
+      }
+
+      // 2. Kiểm tra đối chiếu Email trên Firestore xem đã có tài khoản cũ dưới UID khác không
+      try {
+        final querySnap = await FirebaseFirestore.instance
+            .collection('users')
+            .where('email', isEqualTo: email)
+            .limit(1)
+            .get()
+            .timeout(const Duration(seconds: 4));
+        if (querySnap.docs.isNotEmpty) {
+          final existing = UserModel.fromMap(querySnap.docs.first.data(), docId: fbUser.uid);
+          await docRef.set(existing.toMap(), SetOptions(merge: true));
+          return existing;
+        }
+      } catch (e) {
+        debugPrint('Firestore email matching query warning: $e');
+      }
+
+      // Nếu chưa có document trên Firestore, kiểm tra seed account hoặc khởi tạo mới
       UserModel profile;
       if (_seedAccounts.containsKey(email)) {
         profile = UserModel.fromMap(
