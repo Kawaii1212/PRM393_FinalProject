@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -6,30 +7,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user_model.dart';
-
-enum GoogleSignInStatus {
-  success,
-  needsRoleSelection,
-  failed,
-}
-
-class GoogleSignInResult {
-  final GoogleSignInStatus status;
-  final UserModel? user;
-  final User? firebaseUser;
-  final String? errorMessage;
-  final String? tempEmail;
-  final String? tempName;
-
-  const GoogleSignInResult({
-    required this.status,
-    this.user,
-    this.firebaseUser,
-    this.errorMessage,
-    this.tempEmail,
-    this.tempName,
-  });
-}
 
 class AuthProvider extends ChangeNotifier {
   static const String _prefCurrentUserKey = 'gearsports_current_user';
@@ -40,6 +17,10 @@ class AuthProvider extends ChangeNotifier {
   String? _errorMessage;
   bool _isFirebaseAvailable = false;
 
+  String? _pendingOtp;
+  String? _pendingOtpEmail;
+  DateTime? _otpExpiresAt;
+
   UserModel? get currentUser => _currentUser;
   bool get isLoggedIn => _currentUser != null;
   bool get isGuest => _currentUser?.uid == 'guest_user' || _currentUser?.email == 'guest@gearsports.vn';
@@ -47,6 +28,9 @@ class AuthProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
   bool get isFirebaseAvailable => _isFirebaseAvailable;
+  String? get pendingOtp => _pendingOtp;
+  String? get pendingOtpEmail => _pendingOtpEmail;
+  bool get hasPendingOtp => _pendingOtp != null;
 
   // Khởi tạo rỗng: Không sử dụng tài khoản mẫu hardcode
   static final Map<String, Map<String, dynamic>> _seedAccounts = {};
@@ -365,273 +349,121 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  /// Đăng nhập bằng Google (SRS 2.2 #1)
-  /// Trả về [GoogleSignInResult]:
-  /// - status == GoogleSignInStatus.success: Đã khớp tài khoản cũ hoặc Admin -> Đăng nhập ngay
-  /// - status == GoogleSignInStatus.needsRoleSelection: Tài khoản Google mới -> Cần chọn vai trò (Cách B)
-  /// - status == GoogleSignInStatus.failed: Thất bại kèm thông báo lỗi
-  Future<GoogleSignInResult> signInWithGoogle({String? hintEmail}) async {
-    _isLoading = true;
-    _errorMessage = null;
-    notifyListeners();
-
-    try {
-      _checkFirebaseStatus();
-      User? fbUser;
-      String? fallbackEmail;
-      String? fallbackName;
-
-      if (_isFirebaseAvailable) {
-        try {
-          final googleProvider = GoogleAuthProvider();
-          final credential = await FirebaseAuth.instance
-              .signInWithProvider(googleProvider)
-              .timeout(const Duration(seconds: 12));
-          fbUser = credential.user;
-        } on TimeoutException {
-          debugPrint('Firebase Google Sign-In timeout');
-          _errorMessage =
-              'Quá thời gian chờ kết nối Google. Vui lòng kiểm tra lại kết nối mạng.';
-          _isLoading = false;
-          notifyListeners();
-          return const GoogleSignInResult(
-            status: GoogleSignInStatus.failed,
-            errorMessage: 'Quá thời gian chờ kết nối Google. Vui lòng kiểm tra lại kết nối mạng.',
-          );
-        } on FirebaseAuthException catch (fbErr) {
-          debugPrint('Firebase Google Sign-In FirebaseAuthException: ${fbErr.code} - ${fbErr.message}');
-          if (fbErr.code == 'invalid-cert-hash') {
-            debugPrint('⚠️ Lỗi invalid-cert-hash: Mã SHA-1 của thiết bị/máy ảo chưa được thêm vào Firebase Console.');
-            fallbackEmail = hintEmail != null && hintEmail.trim().isNotEmpty
-                ? hintEmail.trim().toLowerCase()
-                : 'namhgjk123@gmail.com';
-            fallbackName = fallbackEmail == 'namhgjk123@gmail.com'
-                ? 'Nguyễn Sơn Nam (Admin)'
-                : 'Người dùng Google (Giả lập)';
-          } else if (fbErr.code == 'operation-not-allowed') {
-            _errorMessage = 'Chưa bật phương thức đăng nhập Google trong Firebase Console.';
-            _isLoading = false;
-            notifyListeners();
-            return GoogleSignInResult(
-              status: GoogleSignInStatus.failed,
-              errorMessage: _errorMessage,
-            );
-          } else {
-            _errorMessage = 'Lỗi đăng nhập Google: ${fbErr.message ?? fbErr.code}';
-            _isLoading = false;
-            notifyListeners();
-            return GoogleSignInResult(
-              status: GoogleSignInStatus.failed,
-              errorMessage: _errorMessage,
-            );
-          }
-        } catch (e) {
-          debugPrint('Firebase Google Sign-In fallback: $e');
-        }
-      } else {
-        fallbackEmail = hintEmail != null && hintEmail.trim().isNotEmpty
-            ? hintEmail.trim().toLowerCase()
-            : 'namhgjk123@gmail.com';
-        fallbackName = fallbackEmail == 'namhgjk123@gmail.com'
-            ? 'Nguyễn Sơn Nam (Admin)'
-            : 'Người dùng Google (Offline)';
-      }
-
-      final email = (fbUser?.email ?? fallbackEmail ?? '').toLowerCase();
-      final displayName = fbUser?.displayName ?? fallbackName ?? 'Người dùng Google';
-      final uid = fbUser?.uid ?? 'google_${DateTime.now().millisecondsSinceEpoch}';
-
-      if (email.isEmpty) {
-        _errorMessage = 'Không lấy được thông tin Email từ tài khoản Google.';
-        _isLoading = false;
-        notifyListeners();
-        return const GoogleSignInResult(
-          status: GoogleSignInStatus.failed,
-          errorMessage: 'Không lấy được thông tin Email từ tài khoản Google.',
-        );
-      }
-
-      // 1. Kiểm tra nếu là Email Quản trị viên (Admin Whitelist)
-      final isAdmin = email == 'namhgjk123@gmail.com' ||
-          email.contains('admin@gearsports') ||
-          _seedAccounts[email]?['user']?['role'] == 'admin';
-
-      if (isAdmin) {
-        final adminUser = UserModel(
-          uid: uid,
-          email: email,
-          fullName: displayName.isNotEmpty ? displayName : 'Nguyễn Sơn Nam (Admin)',
-          phone: fbUser?.phoneNumber ?? '0901234567',
-          role: UserRole.admin,
-          playStyle: 'Quản trị viên hệ thống Gear Sports 🛡️',
-          createdAt: DateTime.now(),
-        );
-
-        if (_isFirebaseAvailable) {
-          await _saveProfileToFirestore(adminUser);
-        }
-        final prefs = await SharedPreferences.getInstance();
-        await _saveSessionLocally(adminUser, prefs);
-
-        _currentUser = adminUser;
-        _isLoading = false;
-        notifyListeners();
-        return GoogleSignInResult(
-          status: GoogleSignInStatus.success,
-          user: adminUser,
-        );
-      }
-
-      // 2. Tìm tài khoản cũ trong Cloud Firestore theo UID hoặc Email
-      UserModel? existingUser;
-      if (_isFirebaseAvailable) {
-        try {
-          final docRef = FirebaseFirestore.instance.collection('users').doc(uid);
-          final docSnap = await docRef.get().timeout(const Duration(seconds: 4));
-          if (docSnap.exists && docSnap.data() != null) {
-            existingUser = UserModel.fromMap(docSnap.data()!, docId: uid);
-          } else {
-            final query = await FirebaseFirestore.instance
-                .collection('users')
-                .where('email', isEqualTo: email)
-                .limit(1)
-                .get()
-                .timeout(const Duration(seconds: 4));
-            if (query.docs.isNotEmpty) {
-              existingUser = UserModel.fromMap(query.docs.first.data(), docId: uid);
-              await docRef.set(existingUser.toMap(), SetOptions(merge: true));
-            }
-          }
-        } catch (e) {
-          debugPrint('Firestore existing user search warning: $e');
-        }
-      }
-
-      // 3. Tìm trong Local Storage (SharedPreferences)
-      if (existingUser == null) {
-        final prefs = await SharedPreferences.getInstance();
-        final localMap = _getLocalUsersMap(prefs);
-        if (localMap.containsKey(email)) {
-          final localEntry = localMap[email] as Map<String, dynamic>;
-          final localData = Map<String, dynamic>.from(localEntry['user']);
-          existingUser = UserModel.fromMap(localData).copyWith(uid: uid);
-          if (_isFirebaseAvailable) {
-            await _saveProfileToFirestore(existingUser);
-          }
-        }
-      }
-
-      // Nếu tài khoản đã tồn tại: Đăng nhập ngay lập tức với vai trò sẵn có
-      if (existingUser != null) {
-        if (existingUser.isBlocked) {
-          _errorMessage = 'Tài khoản này đã bị khóa bởi Quản trị viên.';
-          _isLoading = false;
-          notifyListeners();
-          return const GoogleSignInResult(
-            status: GoogleSignInStatus.failed,
-            errorMessage: 'Tài khoản này đã bị khóa bởi Quản trị viên.',
-          );
-        }
-
-        final prefs = await SharedPreferences.getInstance();
-        await _saveSessionLocally(existingUser, prefs);
-
-        _currentUser = existingUser;
-        _isLoading = false;
-        notifyListeners();
-        return GoogleSignInResult(
-          status: GoogleSignInStatus.success,
-          user: existingUser,
-        );
-      }
-
-      // Nếu là tài khoản Google mới toanh: Trả về trạng thái yêu cầu chọn vai trò (Cách B)
-      _isLoading = false;
-      notifyListeners();
-      return GoogleSignInResult(
-        status: GoogleSignInStatus.needsRoleSelection,
-        firebaseUser: fbUser,
-        tempEmail: email,
-        tempName: displayName,
-      );
-    } catch (e) {
-      _errorMessage = 'Đăng nhập Google thất bại: $e';
-      _isLoading = false;
-      notifyListeners();
-      return GoogleSignInResult(
-        status: GoogleSignInStatus.failed,
-        errorMessage: _errorMessage,
-      );
-    }
-  }
-
-  /// Hoàn tất đăng ký tài khoản Google mới với Vai trò do người dùng lựa chọn (Cách B)
-  Future<bool> completeGoogleRegistration({
-    required UserRole role,
-    String? email,
-    String? fullName,
-    String? phone,
-    String? playStyle,
-    String? shopName,
-    User? fbUser,
+  /// Gửi mã xác thực OTP 6 số đến email khi người dùng đăng ký tài khoản
+  Future<bool> sendRegistrationOtp({
+    required String email,
+    required String fullName,
   }) async {
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
 
     try {
-      final finalEmail = (email ?? fbUser?.email ?? '').trim().toLowerCase();
-      final finalName = (fullName ?? fbUser?.displayName ?? (role == UserRole.stringer ? 'Chủ Shop' : 'Người chơi')).trim();
-      final uid = fbUser?.uid ?? 'google_${DateTime.now().millisecondsSinceEpoch}';
+      final cleanEmail = email.trim().toLowerCase();
+      final random = Random();
+      final otpCode = (100000 + random.nextInt(900000)).toString();
+      final expiresAt = DateTime.now().add(const Duration(minutes: 5));
 
-      final defaultStyle = role == UserRole.stringer
-          ? 'Chuyên gia đan vợt & Phụ kiện cầu lông'
-          : (playStyle != null && playStyle.trim().isNotEmpty
-              ? playStyle.trim()
-              : 'Thiên công 4U • Sẵn sàng ra sân 🏸');
+      _pendingOtp = otpCode;
+      _pendingOtpEmail = cleanEmail;
+      _otpExpiresAt = expiresAt;
 
-      final newUser = UserModel(
-        uid: uid,
-        email: finalEmail,
-        fullName: finalName,
-        phone: (phone != null && phone.trim().isNotEmpty)
-            ? phone.trim()
-            : (fbUser?.phoneNumber ?? '0901234567'),
-        role: role,
-        playStyle: defaultStyle,
-        shopName: role == UserRole.stringer
-            ? (shopName != null && shopName.trim().isNotEmpty
-                ? shopName.trim()
-                : 'Cửa hàng $finalName')
-            : null,
-        createdAt: DateTime.now(),
-      );
+      debugPrint('======================================================');
+      debugPrint('🔑 [GearSports] MÃ XÁC THỰC OTP ĐĂNG KÝ: $otpCode');
+      debugPrint('📧 Gửi tới: $cleanEmail (Hết hạn lúc: $expiresAt)');
+      debugPrint('======================================================');
 
-      // Lưu lên Firestore
       if (_isFirebaseAvailable) {
-        await _saveProfileToFirestore(newUser);
+        try {
+          // 1. Lưu bản ghi mã xác thực vào Firestore collection 'mail_otps'
+          await FirebaseFirestore.instance
+              .collection('mail_otps')
+              .doc(cleanEmail)
+              .set({
+            'email': cleanEmail,
+            'fullName': fullName.trim(),
+            'code': otpCode,
+            'createdAt': FieldValue.serverTimestamp(),
+            'expiresAt': Timestamp.fromDate(expiresAt),
+          });
+
+          // 2. Collection 'mail' chuẩn bị cho Firebase Trigger Email Extension
+          try {
+            await FirebaseFirestore.instance.collection('mail').add({
+              'to': [cleanEmail],
+              'message': {
+                'subject': '[$otpCode] Mã xác thực đăng ký tài khoản GearSports',
+                'text': 'Xin chào $fullName,\n\nMã xác thực OTP đăng ký tài khoản của bạn là: $otpCode.\nMã này có hiệu lực trong vòng 5 phút.\n\nTrân trọng,\nĐội ngũ GearSports',
+                'html': '<div style="font-family:Arial,sans-serif;padding:24px;background:#181A20;color:#FFFFFF;border-radius:12px;max-width:500px;margin:auto;"><h2 style="color:#00E676;margin-bottom:8px;">🏸 GearSports Badminton</h2><p style="color:#B0BEC5;font-size:14px;">Xin chào <b>$fullName</b>,</p><p style="font-size:14px;color:#ECEFF1;">Cảm ơn bạn đã đăng ký tài khoản tại GearSports. Mã xác thực đăng ký của bạn là:</p><div style="text-align:center;padding:16px;background:#262A34;border-radius:8px;margin:20px 0;"><span style="font-size:32px;font-weight:bold;letter-spacing:8px;color:#00E676;">$otpCode</span></div><p style="font-size:12px;color:#90A4AE;">Mã này có hiệu lực trong <b>5 phút</b>. Vui lòng không chia sẻ mã này cho bất kỳ ai.</p></div>',
+              },
+            });
+          } catch (e) {
+            debugPrint('Lỗi trigger email extension: $e');
+          }
+        } catch (e) {
+          debugPrint('Lưu OTP Firestore error: $e');
+        }
       }
 
-      // Lưu vào Local Storage & Session
-      final prefs = await SharedPreferences.getInstance();
-      final localUsersMap = _getLocalUsersMap(prefs);
-      localUsersMap[finalEmail] = {
-        'password': 'google_oauth_account',
-        'user': newUser.toMap(),
-      };
-      await prefs.setString(_prefLocalUsersKey, jsonEncode(localUsersMap));
-      await _saveSessionLocally(newUser, prefs);
-
-      _currentUser = newUser;
       _isLoading = false;
       notifyListeners();
       return true;
     } catch (e) {
-      _errorMessage = 'Không thể hoàn tất đăng ký: $e';
+      debugPrint('sendRegistrationOtp error: $e');
+      _errorMessage = 'Không thể gửi mã xác thực: $e';
       _isLoading = false;
       notifyListeners();
       return false;
     }
+  }
+
+  /// Xác thực mã OTP người dùng nhập vào
+  bool verifyRegistrationOtp({
+    required String email,
+    required String enteredOtp,
+  }) {
+    final cleanEmail = email.trim().toLowerCase();
+    final cleanOtp = enteredOtp.trim();
+
+    if (_pendingOtp == null || _pendingOtpEmail == null) {
+      _errorMessage = 'Chưa có yêu cầu gửi mã OTP hoặc mã đã hết hạn.';
+      notifyListeners();
+      return false;
+    }
+
+    if (_pendingOtpEmail != cleanEmail) {
+      _errorMessage = 'Email xác thực không khớp với email nhận mã.';
+      notifyListeners();
+      return false;
+    }
+
+    if (_otpExpiresAt != null && DateTime.now().isAfter(_otpExpiresAt!)) {
+      _errorMessage = 'Mã OTP đã hết hạn (quá 5 phút). Vui lòng bấm Gửi lại mã.';
+      notifyListeners();
+      return false;
+    }
+
+    if (_pendingOtp != cleanOtp) {
+      _errorMessage = 'Mã xác thực OTP không chính xác. Vui lòng kiểm tra lại.';
+      notifyListeners();
+      return false;
+    }
+
+    // Xác thực thành công: xóa OTP tạm
+    _pendingOtp = null;
+    _pendingOtpEmail = null;
+    _otpExpiresAt = null;
+    _errorMessage = null;
+    notifyListeners();
+    return true;
+  }
+
+  /// Hủy OTP hiện tại
+  void clearOtp() {
+    _pendingOtp = null;
+    _pendingOtpEmail = null;
+    _otpExpiresAt = null;
+    _errorMessage = null;
   }
 
   /// Đăng nhập nhanh với tư cách Khách (Guest Mode)

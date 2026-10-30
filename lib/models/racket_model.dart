@@ -47,12 +47,12 @@ class Racket {
 
   /// Number of days since last stringing
   int get daysSinceStrung {
-    if (strungDate == null || tensionLogs.isEmpty) return 0;
+    if (strungDate == null) return 0;
     return DateTime.now().difference(strungDate!).inDays;
   }
 
   /// Kiểm tra vợt đã có nhật ký đan cước chưa
-  bool get hasTensionLog => tensionLogs.isNotEmpty && initialTensionLbs > 0;
+  bool get hasTensionLog => (tensionLogs.isNotEmpty || strungDate != null) && initialTensionLbs > 0;
 
   /// Calculates tension loss percentage based on days and play sessions.
   /// Công thức chuẩn: 0.2% cho mỗi ngày trôi qua và 0.7% cho mỗi buổi đánh cầu.

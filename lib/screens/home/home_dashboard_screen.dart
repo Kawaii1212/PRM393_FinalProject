@@ -586,11 +586,15 @@ class HomeDashboardScreen extends StatelessWidget {
                       );
                       return;
                     }
+                    final authUser = context.read<AuthProvider>().currentUser;
                     final chatProvider = context.read<ChatProvider>();
                     final thread = chatProvider.getOrCreateThreadForShop(
                       s.id,
                       s.name,
                       s.imageUrl,
+                      shopOwnerUid: s.ownerUid,
+                      userName: authUser?.fullName,
+                      userEmail: authUser?.email,
                     );
                     Navigator.push(
                       context,

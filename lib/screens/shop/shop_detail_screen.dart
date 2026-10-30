@@ -52,11 +52,15 @@ class _ShopDetailScreenState extends State<ShopDetailScreen>
       );
       return;
     }
+    final authUser = context.read<AuthProvider>().currentUser;
     final chatProvider = context.read<ChatProvider>();
     final thread = chatProvider.getOrCreateThreadForShop(
       shop.id,
       shop.name,
       shop.imageUrl,
+      shopOwnerUid: shop.ownerUid,
+      userName: authUser?.fullName,
+      userEmail: authUser?.email,
     );
 
     // Gửi tự động tin nhắn hỏi về sản phẩm trưng bày
@@ -244,11 +248,15 @@ class _ShopDetailScreenState extends State<ShopDetailScreen>
                 );
                 return;
               }
+              final authUser = context.read<AuthProvider>().currentUser;
               final chatProvider = context.read<ChatProvider>();
               final thread = chatProvider.getOrCreateThreadForShop(
                 shop.id,
                 shop.name,
                 shop.imageUrl,
+                shopOwnerUid: shop.ownerUid,
+                userName: authUser?.fullName,
+                userEmail: authUser?.email,
               );
               Navigator.push(
                 context,
@@ -452,11 +460,15 @@ class _ShopDetailScreenState extends State<ShopDetailScreen>
                                 return;
                               }
 
+                              final authUser = context.read<AuthProvider>().currentUser;
                               final chatProvider = context.read<ChatProvider>();
                               final thread = chatProvider.getOrCreateThreadForShop(
                                 shop.id,
                                 shop.name,
                                 shop.imageUrl,
+                                shopOwnerUid: shop.ownerUid,
+                                userName: authUser?.fullName,
+                                userEmail: authUser?.email,
                               );
                               Navigator.push(
                                 context,

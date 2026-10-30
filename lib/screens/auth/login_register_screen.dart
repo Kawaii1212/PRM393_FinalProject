@@ -1,4 +1,4 @@
-import 'package:firebase_auth/firebase_auth.dart' show User;
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../models/user_model.dart';
@@ -147,7 +147,6 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
 
     final authProvider = context.read<AuthProvider>();
     final shopProvider = context.read<ShopProvider>();
-    final adminProvider = context.read<AdminProvider>();
     bool success = false;
 
     if (_isLogin) {
@@ -155,7 +154,30 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
         email: _emailController.text,
         password: _passwordController.text,
       );
+
+      if (!mounted) return;
+
+      if (success) {
+        final user = authProvider.currentUser;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Đăng nhập thành công! Chào mừng ${user?.fullName ?? ""}'),
+            backgroundColor: AppTheme.primaryDark,
+          ),
+        );
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => user?.role == UserRole.admin
+                ? const AdminDashboardScreen()
+                : (user?.role == UserRole.stringer
+                    ? const ShopOwnerDashboardScreen()
+                    : const SportSelectionScreen()),
+          ),
+        );
+      }
     } else {
+      // Đăng ký tài khoản: Kiểm tra thông tin trước khi gửi mã OTP
       if (_selectedRole == UserRole.stringer) {
         if (!_isLocationValid) {
           await _verifyShopLocation();
@@ -188,88 +210,26 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
         }
       }
 
-      success = await authProvider.register(
-        fullName: _nameController.text,
-        phone: _phoneController.text,
-        email: _emailController.text,
-        password: _passwordController.text,
-        role: _selectedRole,
-        playStyle: _selectedRole == UserRole.admin
-            ? 'Quản trị viên hệ thống Gear Sports 🛡️'
-            : _selectedRole == UserRole.player
-                ? _playStyleController.text
-                : 'Chủ cửa hàng ${_shopNameController.text.trim()}',
-        shopName: _selectedRole == UserRole.stringer
-            ? _shopNameController.text.trim()
-            : null,
+      // Tạo và gửi mã OTP 6 số qua email
+      final otpSent = await authProvider.sendRegistrationOtp(
+        email: _emailController.text.trim(),
+        fullName: _nameController.text.trim(),
       );
 
-      // Nếu đăng ký tài khoản Chủ Shop -> Tự động tạo hồ sơ Shop chờ Admin phê duyệt
-      if (success && _selectedRole == UserRole.stringer) {
-        final registeredUser = authProvider.currentUser;
-        if (registeredUser != null) {
-          final currentLoc = shopProvider.userLocation;
-          final resolvedLat = double.tryParse(_shopLatitudeController.text.trim()) ?? currentLoc.latitude;
-          final resolvedLng = double.tryParse(_shopLongitudeController.text.trim()) ?? currentLoc.longitude;
+      if (!mounted) return;
 
-          final newShop = Shop(
-            id: 'shop_${registeredUser.uid}',
-            name: _shopNameController.text.trim(),
-            address: _shopAddressController.text.trim(),
-            district: _shopDistrictController.text.trim(),
-            city: _shopCityController.text.trim(),
-            latitude: resolvedLat,
-            longitude: resolvedLng,
-            rating: 5.0,
-            reviewCount: 0,
-            machineModel: _shopMachineController.text.trim(),
-            stringerCert: _shopCertController.text.trim(),
-            phone: _phoneController.text.trim(),
-            openHours: _shopOpenHoursController.text.trim().isEmpty
-                ? '08:00 - 21:30'
-                : _shopOpenHoursController.text.trim(),
-            imageUrl: '',
-            ownerUid: registeredUser.uid,
-            ownerName: registeredUser.fullName,
-            ownerEmail: registeredUser.email,
-            status: 'pending', // Chờ Admin phê duyệt
-          );
-          await shopProvider.upsertShop(newShop);
-        }
-      }
-      try {
-        await adminProvider
-            .refreshAdminData()
-            .timeout(const Duration(seconds: 3));
-      } catch (_) {}
-    }
-
-    if (!mounted) return;
-
-    if (success) {
-      final user = authProvider.currentUser;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            _isLogin
-                ? 'Đăng nhập thành công! Chào mừng ${user?.fullName ?? ''}'
-                : (user?.role == UserRole.stringer
-                    ? 'Đăng ký thành công! Hồ sơ cửa hàng đã được gửi chờ Admin phê duyệt.'
-                    : 'Đăng ký tài khoản thành công! Chào mừng ${user?.fullName ?? ''}'),
+      if (!otpSent) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(authProvider.errorMessage ?? 'Không thể gửi mã xác thực OTP!'),
+            backgroundColor: AppTheme.danger,
           ),
-          backgroundColor: AppTheme.primaryDark,
-        ),
-      );
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (_) => user?.role == UserRole.admin
-              ? const AdminDashboardScreen()
-              : (user?.role == UserRole.stringer
-                  ? const ShopOwnerDashboardScreen()
-                  : const SportSelectionScreen()),
-        ),
-      );
+        );
+        return;
+      }
+
+      // Hiển thị hộp thoại nhập mã OTP để hoàn tất đăng ký
+      await _showOtpVerificationDialog(context);
     }
   }
 
@@ -278,7 +238,7 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          'Đăng nhập thành công! Chào mừng ${user.fullName} (${user.role.displayName})',
+          'Chào mừng ${user.fullName} (${user.role.displayName})',
         ),
         backgroundColor: AppTheme.primaryDark,
       ),
@@ -296,54 +256,312 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
     );
   }
 
-  Future<void> _handleGoogleSignIn() async {
-    final authProvider = context.read<AuthProvider>();
-    final hint = _emailController.text.trim();
+  /// Hộp thoại xác thực mã OTP gửi về Email trước khi đăng ký
+  Future<void> _showOtpVerificationDialog(BuildContext rootContext) async {
+    final authProvider = rootContext.read<AuthProvider>();
+    final shopProvider = rootContext.read<ShopProvider>();
+    final adminProvider = rootContext.read<AdminProvider>();
+    final targetEmail = _emailController.text.trim();
+    final targetName = _nameController.text.trim();
 
-    final result = await authProvider.signInWithGoogle(hintEmail: hint);
-    if (!mounted) return;
+    final otpController = TextEditingController();
+    String? dialogError;
+    bool isVerifying = false;
+    int resendCooldown = 60;
+    Timer? countdownTimer;
 
-    if (result.status == GoogleSignInStatus.success) {
-      final user = authProvider.currentUser;
-      _navigateToDashboard(user);
-    } else if (result.status == GoogleSignInStatus.needsRoleSelection) {
-      // Cách B: Hiển thị BottomSheet chọn vai trò Người chơi hoặc Chủ Shop
-      _showRoleSelectionBottomSheet(
-        fbUser: result.firebaseUser,
-        tempEmail: result.tempEmail ?? 'google.user@gearsports.vn',
-        tempName: result.tempName ?? 'Người dùng Google',
-      );
-    } else if (result.status == GoogleSignInStatus.failed) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(result.errorMessage ?? 'Đăng nhập Google thất bại!'),
-          backgroundColor: AppTheme.danger,
-        ),
-      );
-    }
-  }
+    await showDialog(
+      context: rootContext,
+      barrierDismissible: false,
+      builder: (dialogCtx) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            countdownTimer ??= Timer.periodic(const Duration(seconds: 1), (t) {
+              if (resendCooldown > 0) {
+                setDialogState(() => resendCooldown--);
+              } else {
+                t.cancel();
+              }
+            });
 
-  void _showRoleSelectionBottomSheet({
-    required User? fbUser,
-    required String tempEmail,
-    required String tempName,
-  }) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (bottomSheetContext) {
-        return _GoogleRoleSelectionSheet(
-          fbUser: fbUser,
-          tempEmail: tempEmail,
-          tempName: tempName,
-          onComplete: (registeredUser) {
-            Navigator.pop(bottomSheetContext);
-            _navigateToDashboard(registeredUser);
+            return AlertDialog(
+              backgroundColor: AppTheme.surface,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              title: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primary.withOpacity(0.15),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.mark_email_read_rounded, color: AppTheme.primary, size: 24),
+                  ),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Text(
+                      'Xác Thực Email OTP',
+                      style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'GearSports đã gửi mã xác thực 6 số đến email đăng ký của bạn:',
+                      style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      targetEmail,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.primary,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    // Hiển thị mã hỗ trợ thử nghiệm (tiện lợi trên máy ảo / test nhanh)
+                    if (authProvider.pendingOtp != null)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: AppTheme.surfaceLight,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: AppTheme.primary.withOpacity(0.4)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.vpn_key_rounded, color: AppTheme.primary, size: 16),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                'Mã OTP thử nghiệm: ${authProvider.pendingOtp}',
+                                style: const TextStyle(fontSize: 12, color: AppTheme.primary, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: otpController,
+                      keyboardType: TextInputType.number,
+                      maxLength: 6,
+                      textAlign: TextAlign.center,
+                      autofocus: true,
+                      style: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 8,
+                        color: AppTheme.primary,
+                      ),
+                      decoration: InputDecoration(
+                        counterText: '',
+                        hintText: '• • • • • •',
+                        hintStyle: const TextStyle(letterSpacing: 8, color: AppTheme.textMuted),
+                        filled: true,
+                        fillColor: AppTheme.surfaceLight,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: AppTheme.border),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: AppTheme.primary, width: 2),
+                        ),
+                      ),
+                    ),
+                    if (dialogError != null) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        dialogError!,
+                        style: const TextStyle(color: AppTheme.danger, fontSize: 12),
+                      ),
+                    ],
+                    const SizedBox(height: 14),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        TextButton(
+                          onPressed: resendCooldown > 0
+                              ? null
+                              : () async {
+                                  final ok = await authProvider.sendRegistrationOtp(
+                                    email: targetEmail,
+                                    fullName: targetName,
+                                  );
+                                  if (ok) {
+                                    setDialogState(() {
+                                      resendCooldown = 60;
+                                      dialogError = null;
+                                    });
+                                    if (rootContext.mounted) {
+                                      ScaffoldMessenger.of(rootContext).showSnackBar(
+                                        SnackBar(
+                                          content: Text('Đã gửi lại mã OTP: ${authProvider.pendingOtp}'),
+                                          backgroundColor: AppTheme.primaryDark,
+                                        ),
+                                      );
+                                    }
+                                  }
+                                },
+                          child: Text(
+                            resendCooldown > 0
+                                ? 'Gửi lại mã (${resendCooldown}s)'
+                                : 'Gửi lại mã OTP',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              color: resendCooldown > 0 ? AppTheme.textMuted : AppTheme.primary,
+                            ),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () {
+                            countdownTimer?.cancel();
+                            authProvider.clearOtp();
+                            Navigator.pop(dialogCtx);
+                          },
+                          child: const Text(
+                            'Hủy',
+                            style: TextStyle(fontSize: 12.5, color: AppTheme.textMuted),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: isVerifying
+                        ? null
+                        : () async {
+                            final code = otpController.text.trim();
+                            if (code.length != 6) {
+                              setDialogState(() {
+                                dialogError = 'Vui lòng nhập đủ 6 chữ số mã OTP!';
+                              });
+                              return;
+                            }
+
+                            final isValid = authProvider.verifyRegistrationOtp(
+                              email: targetEmail,
+                              enteredOtp: code,
+                            );
+
+                            if (!isValid) {
+                              setDialogState(() {
+                                dialogError = authProvider.errorMessage ?? 'Mã OTP không chính xác!';
+                              });
+                              return;
+                            }
+
+                            setDialogState(() => isVerifying = true);
+
+                            // Thực hiện đăng ký tài khoản chính thức
+                            final regSuccess = await authProvider.register(
+                              fullName: _nameController.text.trim(),
+                              phone: _phoneController.text.trim(),
+                              email: _emailController.text.trim(),
+                              password: _passwordController.text,
+                              role: _selectedRole,
+                              playStyle: _selectedRole == UserRole.admin
+                                  ? 'Quản trị viên hệ thống Gear Sports 🛡️'
+                                  : _selectedRole == UserRole.player
+                                      ? _playStyleController.text.trim()
+                                      : 'Chủ cửa hàng ${_shopNameController.text.trim()}',
+                              shopName: _selectedRole == UserRole.stringer
+                                  ? _shopNameController.text.trim()
+                                  : null,
+                            );
+
+                            if (regSuccess && _selectedRole == UserRole.stringer) {
+                              final registeredUser = authProvider.currentUser;
+                              if (registeredUser != null) {
+                                final currentLoc = shopProvider.userLocation;
+                                final resolvedLat = double.tryParse(_shopLatitudeController.text.trim()) ?? currentLoc.latitude;
+                                final resolvedLng = double.tryParse(_shopLongitudeController.text.trim()) ?? currentLoc.longitude;
+
+                                final newShop = Shop(
+                                  id: 'shop_${registeredUser.uid}',
+                                  name: _shopNameController.text.trim(),
+                                  address: _shopAddressController.text.trim(),
+                                  district: _shopDistrictController.text.trim(),
+                                  city: _shopCityController.text.trim(),
+                                  latitude: resolvedLat,
+                                  longitude: resolvedLng,
+                                  rating: 5.0,
+                                  reviewCount: 0,
+                                  machineModel: _shopMachineController.text.trim(),
+                                  stringerCert: _shopCertController.text.trim(),
+                                  phone: _phoneController.text.trim(),
+                                  openHours: _shopOpenHoursController.text.trim().isEmpty
+                                      ? '08:00 - 21:30'
+                                      : _shopOpenHoursController.text.trim(),
+                                  imageUrl: '',
+                                  ownerUid: registeredUser.uid,
+                                  ownerName: registeredUser.fullName,
+                                  ownerEmail: registeredUser.email,
+                                  status: 'pending',
+                                );
+                                await shopProvider.upsertShop(newShop);
+                              }
+                            }
+
+                            try {
+                              await adminProvider.refreshAdminData().timeout(const Duration(seconds: 3));
+                            } catch (_) {}
+
+                            countdownTimer?.cancel();
+                            if (!dialogCtx.mounted) return;
+                            Navigator.pop(dialogCtx);
+
+                            if (regSuccess) {
+                              final user = authProvider.currentUser;
+                              _navigateToDashboard(user);
+                            } else {
+                              if (rootContext.mounted) {
+                                ScaffoldMessenger.of(rootContext).showSnackBar(
+                                  SnackBar(
+                                    content: Text(authProvider.errorMessage ?? 'Đăng ký tài khoản thất bại!'),
+                                    backgroundColor: AppTheme.danger,
+                                  ),
+                                );
+                              }
+                            }
+                          },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primary,
+                      foregroundColor: Colors.black,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: isVerifying
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
+                          )
+                        : const Text(
+                            'Xác Nhận & Hoàn Tất Đăng Ký',
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                          ),
+                  ),
+                ),
+              ],
+            );
           },
         );
       },
     );
+    countdownTimer?.cancel();
   }
 
   Future<void> _handleGuestSignIn() async {
@@ -1242,31 +1460,7 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
                   ),
                   const SizedBox(height: 14),
 
-                  // Nút Google & Khách
-                  OutlinedButton.icon(
-                    onPressed:
-                        authProvider.isLoading ? null : _handleGoogleSignIn,
-                    icon: const Icon(
-                      Icons.g_mobiledata_rounded,
-                      size: 28,
-                      color: Colors.white,
-                    ),
-                    label: const Text(
-                      'Đăng nhập với Google',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      side: const BorderSide(color: AppTheme.border),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
+
 
                   TextButton(
                     onPressed:
@@ -1365,445 +1559,6 @@ class _RoleOptionCard extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-
-class _GoogleRoleSelectionSheet extends StatefulWidget {
-  final User? fbUser;
-  final String tempEmail;
-  final String tempName;
-  final ValueChanged<UserModel> onComplete;
-
-  const _GoogleRoleSelectionSheet({
-    required this.fbUser,
-    required this.tempEmail,
-    required this.tempName,
-    required this.onComplete,
-  });
-
-  @override
-  State<_GoogleRoleSelectionSheet> createState() =>
-      _GoogleRoleSelectionSheetState();
-}
-
-class _GoogleRoleSelectionSheetState extends State<_GoogleRoleSelectionSheet> {
-  UserRole _chosenRole = UserRole.player;
-  late final TextEditingController _shopNameCtrl;
-  late final TextEditingController _shopPhoneCtrl;
-  late final TextEditingController _shopAddressCtrl;
-  bool _isSubmitting = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _shopNameCtrl = TextEditingController(
-      text: 'Cửa hàng ${widget.tempName}',
-    );
-    _shopPhoneCtrl = TextEditingController(text: '0901234567');
-    _shopAddressCtrl = TextEditingController(text: 'Hà Nội, Việt Nam');
-  }
-
-  @override
-  void dispose() {
-    _shopNameCtrl.dispose();
-    _shopPhoneCtrl.dispose();
-    _shopAddressCtrl.dispose();
-    super.dispose();
-  }
-
-  Future<void> _handleSubmit() async {
-    setState(() => _isSubmitting = true);
-    final authProv = context.read<AuthProvider>();
-    final shopProv = context.read<ShopProvider>();
-
-    final success = await authProv.completeGoogleRegistration(
-      role: _chosenRole,
-      email: widget.tempEmail,
-      fullName: widget.tempName,
-      phone: _chosenRole == UserRole.stringer
-          ? _shopPhoneCtrl.text.trim()
-          : null,
-      shopName: _chosenRole == UserRole.stringer
-          ? _shopNameCtrl.text.trim()
-          : null,
-      fbUser: widget.fbUser,
-    );
-
-    if (!mounted) return;
-    setState(() => _isSubmitting = false);
-
-    if (success && authProv.currentUser != null) {
-      final user = authProv.currentUser!;
-      if (_chosenRole == UserRole.stringer) {
-        final currentLoc = shopProv.userLocation;
-        final newShop = Shop(
-          id: 'shop_',
-          name: _shopNameCtrl.text.trim().isNotEmpty
-              ? _shopNameCtrl.text.trim()
-              : 'Cửa hàng ',
-          address: _shopAddressCtrl.text.trim().isNotEmpty
-              ? _shopAddressCtrl.text.trim()
-              : 'Chưa cập nhật địa chỉ',
-          district: 'Khu vực lân cận',
-          city: 'Việt Nam',
-          latitude: currentLoc.latitude,
-          longitude: currentLoc.longitude,
-          rating: 5.0,
-          reviewCount: 0,
-          machineModel: 'Máy căng điện tử chuyên nghiệp',
-          stringerCert: 'Chứng chỉ đan cước',
-          phone: _shopPhoneCtrl.text.trim().isNotEmpty
-              ? _shopPhoneCtrl.text.trim()
-              : user.phone,
-          openHours: '08:00 - 21:30',
-          imageUrl: '',
-          ownerUid: user.uid,
-          ownerName: user.fullName,
-          ownerEmail: user.email,
-          status: 'pending',
-        );
-        await shopProv.upsertShop(newShop);
-      }
-      widget.onComplete(user);
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(authProv.errorMessage ?? 'Không thể hoàn tất đăng ký!'),
-          backgroundColor: AppTheme.danger,
-        ),
-      );
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
-    return Container(
-      padding: EdgeInsets.only(
-        left: 20,
-        right: 20,
-        top: 20,
-        bottom: bottomInset + 24,
-      ),
-      decoration: const BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        border: Border(
-          top: BorderSide(color: AppTheme.border, width: 1.5),
-        ),
-      ),
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 44,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 18),
-                decoration: BoxDecoration(
-                  color: AppTheme.border,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: AppTheme.primary.withOpacity(0.15),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.how_to_reg_rounded,
-                    color: AppTheme.primary,
-                    size: 26,
-                  ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Chào mừng bạn đến với Gear Sports! 🎉',
-                        style: TextStyle(
-                          color: AppTheme.textPrimary,
-                          fontSize: 16.5,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        'Google: ${widget.tempEmail}',
-                        style: const TextStyle(
-                          color: AppTheme.primaryDark,
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w600,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            const Text(
-              'Vui lòng chọn vai trò bạn muốn tham gia ứng dụng:',
-              style: TextStyle(
-                color: AppTheme.textSecondary,
-                fontSize: 13,
-              ),
-            ),
-            const SizedBox(height: 14),
-
-            // Thẻ chọn: Người chơi
-            InkWell(
-              onTap: () => setState(() => _chosenRole = UserRole.player),
-              borderRadius: BorderRadius.circular(16),
-              child: Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: _chosenRole == UserRole.player
-                      ? AppTheme.primary.withOpacity(0.12)
-                      : AppTheme.surfaceLight,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: _chosenRole == UserRole.player
-                        ? AppTheme.primary
-                        : AppTheme.border,
-                    width: _chosenRole == UserRole.player ? 1.8 : 1.0,
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: _chosenRole == UserRole.player
-                            ? AppTheme.primary
-                            : AppTheme.border.withOpacity(0.5),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        Icons.sports_tennis_rounded,
-                        color: _chosenRole == UserRole.player
-                            ? Colors.black
-                            : Colors.white70,
-                        size: 22,
-                      ),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: const [
-                          Text(
-                            '🏸 Người chơi cầu lông (Player)',
-                            style: TextStyle(
-                              color: AppTheme.textPrimary,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14.5,
-                            ),
-                          ),
-                          SizedBox(height: 3),
-                          Text(
-                            'Khám phá sân cầu, theo dõi độ căng cước, tìm thợ đan uy tín & đặt lịch dịch vụ.',
-                            style: TextStyle(
-                              color: AppTheme.textSecondary,
-                              fontSize: 11.5,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Radio<UserRole>(
-                      value: UserRole.player,
-                      groupValue: _chosenRole,
-                      activeColor: AppTheme.primary,
-                      onChanged: (v) {
-                        if (v != null) setState(() => _chosenRole = v);
-                      },
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-
-            // Thẻ chọn: Chủ Shop
-            InkWell(
-              onTap: () => setState(() => _chosenRole = UserRole.stringer),
-              borderRadius: BorderRadius.circular(16),
-              child: Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: _chosenRole == UserRole.stringer
-                      ? AppTheme.accent.withOpacity(0.12)
-                      : AppTheme.surfaceLight,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: _chosenRole == UserRole.stringer
-                        ? AppTheme.accent
-                        : AppTheme.border,
-                    width: _chosenRole == UserRole.stringer ? 1.8 : 1.0,
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: _chosenRole == UserRole.stringer
-                            ? AppTheme.accent
-                            : AppTheme.border.withOpacity(0.5),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        Icons.storefront_rounded,
-                        color: _chosenRole == UserRole.stringer
-                            ? Colors.black
-                            : Colors.white70,
-                        size: 22,
-                      ),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: const [
-                          Text(
-                            '🏪 Chủ Shop / Thợ đan cước (Stringer)',
-                            style: TextStyle(
-                              color: AppTheme.textPrimary,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14.5,
-                            ),
-                          ),
-                          SizedBox(height: 3),
-                          Text(
-                            'Mở gian hàng đối tác, đăng dịch vụ đan vợt, bán phụ kiện và nhận đơn từ người chơi.',
-                            style: TextStyle(
-                              color: AppTheme.textSecondary,
-                              fontSize: 11.5,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Radio<UserRole>(
-                      value: UserRole.stringer,
-                      groupValue: _chosenRole,
-                      activeColor: AppTheme.accent,
-                      onChanged: (v) {
-                        if (v != null) setState(() => _chosenRole = v);
-                      },
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            // Nếu chọn Chủ Shop -> Hiển thị Form thông tin gian hàng
-            if (_chosenRole == UserRole.stringer) ...[
-              const SizedBox(height: 18),
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: AppTheme.surfaceLight,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: AppTheme.accent.withOpacity(0.4)),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Thông tin cơ bản của Cửa hàng:',
-                      style: TextStyle(
-                        color: AppTheme.accent,
-                        fontSize: 13,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    TextFormField(
-                      controller: _shopNameCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Tên gian hàng / Cửa hàng',
-                        prefixIcon: Icon(Icons.store_rounded, size: 20),
-                        isDense: true,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    TextFormField(
-                      controller: _shopPhoneCtrl,
-                      keyboardType: TextInputType.phone,
-                      decoration: const InputDecoration(
-                        labelText: 'Số điện thoại hotline Shop',
-                        prefixIcon: Icon(Icons.phone_rounded, size: 20),
-                        isDense: true,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    TextFormField(
-                      controller: _shopAddressCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Địa chỉ cửa hàng',
-                        prefixIcon: Icon(Icons.location_on_rounded, size: 20),
-                        isDense: true,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-
-            const SizedBox(height: 20),
-
-            // Nút hoàn tất
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: _isSubmitting ? null : _handleSubmit,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _chosenRole == UserRole.stringer
-                      ? AppTheme.accent
-                      : AppTheme.primary,
-                  foregroundColor: Colors.black,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: _isSubmitting
-                    ? const SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.5,
-                          color: Colors.black,
-                        ),
-                      )
-                    : Text(
-                        _chosenRole == UserRole.stringer
-                            ? 'Hoàn Tất Đăng Ký Chủ Shop 🏪'
-                            : 'Tiếp Tục Với Người Chơi 🏸',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 15,
-                        ),
-                      ),
               ),
             ),
           ],

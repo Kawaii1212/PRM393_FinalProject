@@ -1,3 +1,4 @@
+import '../../providers/auth_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -1126,11 +1127,15 @@ class _ShopMapScreenState extends State<ShopMapScreen> {
                           IconButton(
                             tooltip: 'Nhắn tin với cửa hàng',
                             onPressed: () {
+                              final authUser = context.read<AuthProvider>().currentUser;
                               final chatProvider = context.read<ChatProvider>();
                               final thread = chatProvider.getOrCreateThreadForShop(
                                 selectedShop.id,
                                 selectedShop.name,
                                 selectedShop.imageUrl,
+                                shopOwnerUid: selectedShop.ownerUid,
+                                userName: authUser?.fullName,
+                                userEmail: authUser?.email,
                               );
                               Navigator.push(
                                 context,
