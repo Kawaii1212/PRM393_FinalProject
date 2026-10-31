@@ -21,6 +21,7 @@ class ShopSubscriptionDialog extends StatefulWidget {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
+      enableDrag: false, // Chống vuốt xuống vô tình làm mất phiên thanh toán
       builder: (_) => ShopSubscriptionDialog(shop: shop),
     );
   }
@@ -34,6 +35,7 @@ class _ShopSubscriptionDialogState extends State<ShopSubscriptionDialog> {
   SubscriptionPlan _selectedPlan = SubscriptionPlan.shopPlans[1]; // Mặc định gói 3 tháng
   bool _isProcessing = false;
   bool _isChecking = false;
+  bool _isRestoredSession = false; // Đánh dấu phiên thanh toán được khôi phục từ trước
   String _transferContent = '';
   String _qrImageUrl = '';
   DateTime? _sessionStartTime;
@@ -42,11 +44,60 @@ class _ShopSubscriptionDialogState extends State<ShopSubscriptionDialog> {
   // Đếm ngược 15 phút
   Timer? _countdownTimer;
   int _countdownSeconds = 15 * 60;
+  bool get _isExpired => _countdownSeconds <= 0;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _restorePendingSessionIfExists();
+    });
+  }
 
   @override
   void dispose() {
     _countdownTimer?.cancel();
     super.dispose();
+  }
+
+  /// Làm mới phiên gia hạn khi hết hạn 15 phút hoặc khi chủ shop muốn tạo mã mới
+  Future<void> _handleRefreshSession(dynamic user) async {
+    await SepayService.clearPendingSession(widget.shop.id);
+    _initPaymentDetails();
+    _startCountdown();
+    if (mounted) {
+      setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Đã làm mới mã thanh toán VietQR và nội dung chuyển khoản gia hạn shop!'),
+          backgroundColor: AppTheme.primary,
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  /// Tự động nạp lại phiên thanh toán dở dang của shop nếu còn hiệu lực (trong vòng 20 phút)
+  Future<void> _restorePendingSessionIfExists() async {
+    if (widget.shop.id.isEmpty) return;
+    final session = await SepayService.getPendingSession(widget.shop.id);
+    if (session != null && session.isValid && mounted) {
+      final plan = SubscriptionPlan.shopPlans.firstWhere(
+        (p) => p.id == session.planId,
+        orElse: () => SubscriptionPlan.shopPlans[1],
+      );
+      setState(() {
+        _selectedPlan = plan;
+        _transferContent = session.transferContent;
+        _qrImageUrl = session.qrImageUrl;
+        _sessionStartTime = session.sessionStartTime;
+        _countdownSeconds = session.remainingCountdownSeconds;
+        _isRestoredSession = true;
+        _currentStep = 1;
+      });
+      _startCountdown(customSeconds: _countdownSeconds);
+    }
   }
 
   void _initPaymentDetails() {
@@ -59,11 +110,23 @@ class _ShopSubscriptionDialogState extends State<ShopSubscriptionDialog> {
       amount: _selectedPlan.priceVnd,
       transferContent: _transferContent,
     );
+    _isRestoredSession = false;
+
+    // Lưu bền vững phiên thanh toán của Shop vào SharedPreferences để không bị mất khi chuyển app
+    SepayService.savePendingSession(PendingPaymentSession(
+      targetId: widget.shop.id,
+      targetType: 'shop',
+      planId: _selectedPlan.id,
+      expectedAmount: _selectedPlan.priceVnd,
+      transferContent: _transferContent,
+      qrImageUrl: _qrImageUrl,
+      sessionStartTime: _sessionStartTime!,
+    ));
   }
 
-  void _startCountdown() {
+  void _startCountdown({int? customSeconds}) {
     _countdownTimer?.cancel();
-    _countdownSeconds = 15 * 60;
+    _countdownSeconds = customSeconds ?? (15 * 60);
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (!mounted) {
         timer.cancel();
@@ -77,6 +140,87 @@ class _ShopSubscriptionDialogState extends State<ShopSubscriptionDialog> {
         }
       });
     });
+  }
+
+  /// Hủy phiên thanh toán dở dang để chủ shop có thể chọn lại gói khác
+  Future<void> _handleCancelPendingSession(dynamic user) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.help_outline_rounded, color: AppTheme.warning),
+            SizedBox(width: 8),
+            Text('Hủy phiên thanh toán?', style: TextStyle(color: AppTheme.textPrimary, fontSize: 16, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: const Text(
+          'Nếu bạn đã chuyển khoản trên app ngân hàng, vui lòng KHÔNG hủy mà hãy nhấn "Tôi Đã Chuyển Khoản" để hệ thống gia hạn shop.\n\nBạn có chắc chắn muốn hủy phiên này để chọn lại gói khác?',
+          style: TextStyle(color: AppTheme.textSecondary, fontSize: 13, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Giữ lại', style: TextStyle(color: AppTheme.textSecondary)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.danger, foregroundColor: Colors.white),
+            child: const Text('Hủy & Chọn lại'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true && mounted) {
+      await SepayService.clearPendingSession(widget.shop.id);
+      _countdownTimer?.cancel();
+      setState(() {
+        _isRestoredSession = false;
+        _currentStep = 0;
+      });
+    }
+  }
+
+  /// Hộp thoại xác nhận khi người dùng đóng hộp thoại lúc đang ở bước quét mã QR
+  Future<bool> _showConfirmExitPaymentDialog() async {
+    final res = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.info_outline_rounded, color: AppTheme.accent),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text('Tạm đóng màn hình?', style: TextStyle(color: AppTheme.textPrimary, fontSize: 16, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+        content: Text(
+          'Mã thanh toán "$_transferContent" vẫn được lưu an toàn trong 15 phút.\nBạn có thể sang app ngân hàng chuyển khoản rồi mở lại hộp thoại này để bấm xác nhận bất cứ lúc nào!',
+          style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Ở lại', style: TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.surfaceLight,
+              foregroundColor: AppTheme.textPrimary,
+            ),
+            child: const Text('Tạm đóng'),
+          ),
+        ],
+      ),
+    );
+    return res ?? false;
   }
 
   /// Chủ shop bấm xác nhận đã chuyển khoản
@@ -118,6 +262,8 @@ class _ShopSubscriptionDialogState extends State<ShopSubscriptionDialog> {
           _isProcessing = false;
           if (success) {
             _countdownTimer?.cancel();
+            _isRestoredSession = false;
+            SepayService.clearPendingSession(widget.shop.id);
             _currentStep = 2; // Chuyển sang màn hình thành công
           }
         });
@@ -185,6 +331,29 @@ class _ShopSubscriptionDialogState extends State<ShopSubscriptionDialog> {
                 ],
               ),
             ),
+            if (_isExpired) ...[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppTheme.danger.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppTheme.danger.withOpacity(0.3)),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.warning_amber_rounded, color: AppTheme.danger, size: 18),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Phiên gia hạn đã hết hạn 15 phút. Nếu bạn chưa chuyển khoản, vui lòng bấm "Làm mới mã thanh toán" để tạo phiên mới!',
+                        style: TextStyle(color: AppTheme.danger, fontSize: 11),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ],
         ),
         actions: [
@@ -217,103 +386,122 @@ class _ShopSubscriptionDialogState extends State<ShopSubscriptionDialog> {
   Widget build(BuildContext context) {
     final user = context.watch<AuthProvider>().currentUser;
 
-    return Container(
-      height: MediaQuery.of(context).size.height * 0.90,
-      decoration: const BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      child: Column(
-        children: [
-          // Drag handle
-          Center(
-            child: Container(
-              margin: const EdgeInsets.only(top: 10, bottom: 8),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.white24,
-                borderRadius: BorderRadius.circular(2),
+    return PopScope(
+      canPop: _currentStep != 1,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        final nav = Navigator.of(context);
+        final shouldClose = await _showConfirmExitPaymentDialog();
+        if (shouldClose) {
+          nav.pop();
+        }
+      },
+      child: Container(
+        height: MediaQuery.of(context).size.height * 0.90,
+        decoration: const BoxDecoration(
+          color: AppTheme.surface,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          children: [
+            // Drag handle
+            Center(
+              child: Container(
+                margin: const EdgeInsets.only(top: 10, bottom: 8),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.white24,
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
             ),
-          ),
 
-          // Header
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 8, 8),
-            child: Row(
-              children: [
-                if (_currentStep == 1)
+            // Header
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 8, 8),
+              child: Row(
+                children: [
+                  if (_currentStep == 1)
+                    IconButton(
+                      icon: const Icon(Icons.arrow_back_rounded, color: AppTheme.primary),
+                      tooltip: 'Đổi gói hoặc hủy phiên',
+                      onPressed: () => _handleCancelPendingSession(user),
+                    ),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF38EF7D), Color(0xFF11998E)],
+                      ),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(
+                      _currentStep == 2
+                          ? Icons.check_circle_rounded
+                          : (_currentStep == 1 ? Icons.qr_code_scanner_rounded : Icons.store_mall_directory_rounded),
+                      color: Colors.black,
+                      size: 22,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _currentStep == 2
+                              ? 'Gia Hạn Cửa Hàng Thành Công'
+                              : (_currentStep == 1 ? 'Thanh Toán VietQR Napas 24/7' : 'Gia Hạn Phí Dịch Vụ Cửa Hàng'),
+                          style: const TextStyle(
+                            color: AppTheme.textPrimary,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          _currentStep == 2
+                              ? widget.shop.name
+                              : (_currentStep == 1
+                                  ? _selectedPlan.title
+                                  : '${widget.shop.name} • ${widget.shop.subscriptionStatusLabel}'),
+                          style: const TextStyle(
+                            color: AppTheme.textSecondary,
+                            fontSize: 11,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
                   IconButton(
-                    icon: const Icon(Icons.arrow_back_rounded, color: AppTheme.primary),
-                    onPressed: () {
-                      _countdownTimer?.cancel();
-                      setState(() => _currentStep = 0);
+                    icon: const Icon(Icons.close_rounded, color: AppTheme.textMuted),
+                    onPressed: () async {
+                      if (_currentStep == 1) {
+                        final nav = Navigator.of(context);
+                        final shouldClose = await _showConfirmExitPaymentDialog();
+                        if (shouldClose) {
+                          nav.pop();
+                        }
+                      } else {
+                        Navigator.pop(context);
+                      }
                     },
                   ),
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF38EF7D), Color(0xFF11998E)],
-                    ),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Icon(
-                    _currentStep == 2
-                        ? Icons.check_circle_rounded
-                        : (_currentStep == 1 ? Icons.qr_code_scanner_rounded : Icons.store_mall_directory_rounded),
-                    color: Colors.black,
-                    size: 22,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _currentStep == 2
-                            ? 'Gia Hạn Cửa Hàng Thành Công'
-                            : (_currentStep == 1 ? 'Thanh Toán VietQR Napas 24/7' : 'Gia Hạn Phí Dịch Vụ Cửa Hàng'),
-                        style: const TextStyle(
-                          color: AppTheme.textPrimary,
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      Text(
-                        _currentStep == 2
-                            ? widget.shop.name
-                            : (_currentStep == 1
-                                ? _selectedPlan.title
-                                : '${widget.shop.name} • ${widget.shop.subscriptionStatusLabel}'),
-                        style: const TextStyle(
-                          color: AppTheme.textSecondary,
-                          fontSize: 11,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.close_rounded, color: AppTheme.textMuted),
-                  onPressed: () => Navigator.pop(context),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          const Divider(height: 1, color: AppTheme.border),
+            const Divider(height: 1, color: AppTheme.border),
 
-          // Body Content
-          Expanded(
-            child: _currentStep == 0
-                ? _buildStep0SelectPlan(context)
-                : (_currentStep == 1 ? _buildStep1VietQr(context, user) : _buildStep2Success(context)),
-          ),
-        ],
+            // Body Content
+            Expanded(
+              child: _currentStep == 0
+                  ? _buildStep0SelectPlan(context)
+                  : (_currentStep == 1 ? _buildStep1VietQr(context, user) : _buildStep2Success(context)),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -577,6 +765,58 @@ class _ShopSubscriptionDialogState extends State<ShopSubscriptionDialog> {
             padding: const EdgeInsets.all(16),
             child: Column(
               children: [
+                // Banner thông báo khi phiên gia hạn của Shop được khôi phục từ bộ nhớ
+                if (_isRestoredSession) ...[
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF38EF7D).withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFF38EF7D).withOpacity(0.4)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.history_rounded, color: Color(0xFF38EF7D), size: 22),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Khôi phục phiên gia hạn dở dang',
+                                style: TextStyle(
+                                  color: AppTheme.textPrimary,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              Text(
+                                'Phiên được giữ nguyên để bạn an tâm chuyển khoản trên App ngân hàng mà không bị mất mã nội dung.',
+                                style: TextStyle(
+                                  color: AppTheme.textSecondary.withOpacity(0.9),
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () => _handleCancelPendingSession(user),
+                          child: const Text(
+                            'Đổi gói',
+                            style: TextStyle(
+                              color: AppTheme.warning,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+
                 // Clean user-friendly guidance banner
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -619,22 +859,81 @@ class _ShopSubscriptionDialogState extends State<ShopSubscriptionDialog> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
-                          color: AppTheme.primary.withOpacity(0.12),
+                          color: _isExpired
+                              ? AppTheme.danger.withOpacity(0.15)
+                              : AppTheme.primary.withOpacity(0.12),
                           borderRadius: BorderRadius.circular(8),
+                          border: _isExpired ? Border.all(color: AppTheme.danger.withOpacity(0.5)) : null,
                         ),
-                        child: Text(
-                          '$minutes:$seconds',
-                          style: const TextStyle(
-                            color: AppTheme.primary,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
-                            fontFamily: 'monospace',
-                          ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (_isExpired) ...[
+                              const Icon(Icons.timer_off_rounded, color: AppTheme.danger, size: 14),
+                              const SizedBox(width: 4),
+                            ],
+                            Text(
+                              _isExpired ? '0:00 (Hết hạn)' : '$minutes:$seconds',
+                              style: TextStyle(
+                                color: _isExpired ? AppTheme.danger : AppTheme.primary,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                                fontFamily: 'monospace',
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
                   ),
                 ),
+
+                // Cảnh báo khi phiên gia hạn 15 phút đã kết thúc
+                if (_isExpired) ...[
+                  const SizedBox(height: 10),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppTheme.danger.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppTheme.danger.withOpacity(0.4)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.warning_amber_rounded, color: AppTheme.danger, size: 24),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Phiên gia hạn 15 phút đã hết hạn!',
+                                style: TextStyle(
+                                  color: AppTheme.danger,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              const Text(
+                                '• Đã chuyển tiền: Nhấn nút kiểm tra bên dưới để gia hạn shop.\n• Chưa chuyển tiền: Nhấn "Làm mới" để tạo mã QR mới.',
+                                style: TextStyle(color: AppTheme.textSecondary, fontSize: 11, height: 1.3),
+                              ),
+                            ],
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () => _handleRefreshSession(user),
+                          style: TextButton.styleFrom(
+                            backgroundColor: AppTheme.surfaceLight,
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          ),
+                          child: const Text('Làm mới', style: TextStyle(color: AppTheme.primary, fontSize: 11, fontWeight: FontWeight.bold)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 14),
 
                 // QR Container
@@ -787,31 +1086,58 @@ class _ShopSubscriptionDialogState extends State<ShopSubscriptionDialog> {
             color: AppTheme.surfaceLight,
             border: Border(top: BorderSide(color: AppTheme.border)),
           ),
-          child: SizedBox(
-            width: double.infinity,
-            height: 48,
-            child: ElevatedButton.icon(
-              onPressed: (_isChecking || _isProcessing)
-                  ? null
-                  : () => _handleUserConfirmPayment(user),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primary,
-                foregroundColor: Colors.black,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                elevation: 2,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (_isExpired) ...[
+                SizedBox(
+                  width: double.infinity,
+                  height: 40,
+                  child: OutlinedButton.icon(
+                    onPressed: () => _handleRefreshSession(user),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppTheme.primary,
+                      side: const BorderSide(color: AppTheme.primary),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    icon: const Icon(Icons.refresh_rounded, size: 18),
+                    label: const Text(
+                      'Làm Mới Mã Thanh Toán (Tạo phiên mới)',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ],
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: ElevatedButton.icon(
+                  onPressed: (_isChecking || _isProcessing)
+                      ? null
+                      : () => _handleUserConfirmPayment(user),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _isExpired ? const Color(0xFFFFD700) : AppTheme.primary,
+                    foregroundColor: Colors.black,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    elevation: 2,
+                  ),
+                  icon: _isChecking
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
+                        )
+                      : const Icon(Icons.check_circle_rounded, size: 20),
+                  label: Text(
+                    _isChecking
+                        ? 'Đang kiểm tra giao dịch...'
+                        : (_isExpired ? 'Kiểm Tra Giao Dịch Đã Chuyển' : 'Tôi Đã Chuyển Khoản'),
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                  ),
+                ),
               ),
-              icon: _isChecking
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
-                    )
-                  : const Icon(Icons.check_circle_rounded, size: 20),
-              label: Text(
-                _isChecking ? 'Đang kiểm tra giao dịch...' : 'Tôi Đã Chuyển Khoản',
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-              ),
-            ),
+            ],
           ),
         ),
       ],

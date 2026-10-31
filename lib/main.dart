@@ -7,10 +7,8 @@ import 'providers/auth_provider.dart';
 import 'providers/admin_provider.dart';
 import 'providers/racket_provider.dart';
 import 'providers/shop_provider.dart';
-import 'providers/cart_provider.dart';
 import 'providers/chat_provider.dart';
 import 'providers/notification_provider.dart';
-import 'providers/order_provider.dart';
 import 'providers/injury_provider.dart';
 import 'providers/subscription_provider.dart';
 import 'screens/auth/splash_screen.dart';
@@ -45,7 +43,6 @@ class GearSportsApp extends StatelessWidget {
           },
         ),
         ChangeNotifierProvider(create: (_) => ShopProvider()),
-        ChangeNotifierProvider(create: (_) => CartProvider()),
         ChangeNotifierProxyProvider2<AuthProvider, ShopProvider, ChatProvider>(
           create: (_) => ChatProvider(),
           update: (_, auth, shopProv, chatProv) {
@@ -62,7 +59,6 @@ class GearSportsApp extends StatelessWidget {
           },
         ),
         ChangeNotifierProvider(create: (_) => NotificationProvider()),
-        ChangeNotifierProvider(create: (_) => OrderProvider()),
         ChangeNotifierProvider(create: (_) => SubscriptionProvider()),
         ChangeNotifierProxyProvider<AuthProvider, InjuryProvider>(
           create: (_) => InjuryProvider(),

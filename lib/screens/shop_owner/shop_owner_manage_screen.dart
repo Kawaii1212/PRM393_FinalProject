@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../models/shop_model.dart';
@@ -217,7 +217,7 @@ class _ShopOwnerManageScreenState extends State<ShopOwnerManageScreen> {
               onPressed: () => _showAddEditItemModal(context, myShop),
               backgroundColor: AppTheme.primary,
               foregroundColor: Colors.black,
-              icon: const Icon(Icons.add_shopping_cart_rounded),
+              icon: const Icon(Icons.add_box_rounded),
               label: const Text(
                 'Thêm Dịch Vụ / Vật Phẩm',
                 style: TextStyle(fontWeight: FontWeight.bold),
