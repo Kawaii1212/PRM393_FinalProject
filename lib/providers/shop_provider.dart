@@ -310,11 +310,24 @@ class ShopProvider with ChangeNotifier {
 
   /// Thêm hoặc cập nhật Cửa hàng trên Cloud Firestore (`shops/{id}`)
   Future<void> upsertShop(Shop shop) async {
-    final idx = _firestoreShops.indexWhere((s) => s.id == shop.id);
+    // Đảm bảo Shop đăng ký trên app luôn có mốc createdAt và trialExpiresAt cố định trong cơ sở dữ liệu
+    Shop validatedShop = shop;
+    if (shop.isRegisteredOnApp) {
+      final now = DateTime.now();
+      final fixedCreatedAt = shop.createdAt ?? now;
+      final fixedTrialExpiry = shop.trialExpiresAt ??
+          (shop.subscriptionExpiresAt == null ? fixedCreatedAt.add(const Duration(days: 30)) : null);
+      validatedShop = shop.copyWith(
+        createdAt: fixedCreatedAt,
+        trialExpiresAt: fixedTrialExpiry,
+      );
+    }
+
+    final idx = _firestoreShops.indexWhere((s) => s.id == validatedShop.id);
     if (idx != -1) {
-      _firestoreShops[idx] = shop;
+      _firestoreShops[idx] = validatedShop;
     } else {
-      _firestoreShops.insert(0, shop);
+      _firestoreShops.insert(0, validatedShop);
     }
     _mergeFirestoreShopsIntoList();
     notifyListeners();
@@ -328,8 +341,8 @@ class ShopProvider with ChangeNotifier {
       if (_isFirebaseReady) {
         await FirebaseFirestore.instance
             .collection('shops')
-            .doc(shop.id)
-            .set(shop.toMap(), SetOptions(merge: true))
+            .doc(validatedShop.id)
+            .set(validatedShop.toMap(), SetOptions(merge: true))
             .timeout(const Duration(seconds: 5));
       }
     } catch (e) {

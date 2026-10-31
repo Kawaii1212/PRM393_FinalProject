@@ -562,9 +562,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ),
                             const SizedBox(height: 3),
                             Text(
-                              user.isVipActive
-                                  ? 'Thời hạn còn lại: ${user.vipDaysRemaining} ngày. Bấm để gia hạn cộng dồn!'
-                                  : 'Chỉ từ 29k/tháng: Thêm vợt không giới hạn, mở khóa Bác Sĩ Thể Thao.',
+                              context.watch<AuthProvider>().isGuest
+                                  ? 'Đăng nhập tài khoản GearSports để nâng cấp VIP từ 29k/tháng: Thêm vợt không giới hạn, mở khóa Bác Sĩ Thể Thao.'
+                                  : (user.isVipActive
+                                      ? 'Thời hạn còn lại: ${user.vipDaysRemaining} ngày. Bấm để gia hạn cộng dồn!'
+                                      : 'Chỉ từ 29k/tháng: Thêm vợt không giới hạn, mở khóa Bác Sĩ Thể Thao.'),
                               style: const TextStyle(
                                 color: AppTheme.textSecondary,
                                 fontSize: 11,
@@ -574,7 +576,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                       ),
                       ElevatedButton(
-                        onPressed: () => UpgradeVipDialog.show(context),
+                        onPressed: () {
+                          if (context.read<AuthProvider>().isGuest) {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (_) => const LoginRegisterScreen()),
+                            );
+                          } else {
+                            UpgradeVipDialog.show(context);
+                          }
+                        },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: user.isVipActive
                               ? const Color(0xFFFFD700)
@@ -583,7 +594,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                           textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
                         ),
-                        child: Text(user.isVipActive ? 'Gia hạn' : 'Nâng cấp'),
+                        child: Text(
+                          context.watch<AuthProvider>().isGuest
+                              ? 'Đăng nhập'
+                              : (user.isVipActive ? 'Gia hạn' : 'Nâng cấp'),
+                        ),
                       ),
                     ],
                   ),

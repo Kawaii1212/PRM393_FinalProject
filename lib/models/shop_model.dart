@@ -54,14 +54,19 @@ class Shop {
   /// Shop đã đăng ký tài khoản trên app bởi Chủ Shop (có tài khoản xác thực)
   bool get isRegisteredOnApp => ownerUid != null && ownerUid!.isNotEmpty;
 
-  /// Hạn dùng thử miễn phí 1 tháng (30 ngày kể từ lúc tạo shop)
+  /// Hạn dùng thử miễn phí 1 tháng (30 ngày kể từ lúc tạo shop).
+  /// Nếu shop thiếu cả trialExpiresAt và createdAt, trả về mốc thời gian quá khứ (1970)
+  /// để tránh lỗi rolling 30-day window khiến shop được dùng thử vĩnh viễn không cần đóng phí.
   DateTime get effectiveTrialExpiry {
     if (trialExpiresAt != null) return trialExpiresAt!;
-    return (createdAt ?? DateTime.now()).add(const Duration(days: 30));
+    if (createdAt != null) return createdAt!.add(const Duration(days: 30));
+    return DateTime.fromMillisecondsSinceEpoch(0);
   }
 
   /// Gói dùng thử 1 tháng có còn hiệu lực không
   bool get isTrialActive {
+    if (!isRegisteredOnApp) return false;
+    if (trialExpiresAt == null && createdAt == null) return false;
     return DateTime.now().isBefore(effectiveTrialExpiry);
   }
 
