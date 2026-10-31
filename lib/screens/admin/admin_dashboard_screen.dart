@@ -14,6 +14,8 @@ import '../../providers/notification_provider.dart';
 import '../../providers/chat_provider.dart';
 import '../../theme/app_theme.dart';
 import '../profile/profile_screen.dart';
+import '../../providers/subscription_provider.dart';
+import 'admin_subscriptions_tab.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
@@ -55,6 +57,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       const _AdminShopsProductsTab(),
       const _AdminCommunityChatTab(),
       const _AdminBroadcastNotificationsTab(),
+      const AdminSubscriptionsTab(),
     ];
 
     return Scaffold(
@@ -174,6 +177,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             icon: Icon(Icons.campaign_outlined),
             activeIcon: Icon(Icons.campaign_rounded, color: AppTheme.primary),
             label: 'Thông Báo',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.monetization_on_outlined),
+            activeIcon: Icon(Icons.monetization_on_rounded, color: AppTheme.primary),
+            label: 'Gói & Phí',
           ),
         ],
       ),
@@ -319,9 +327,92 @@ class _AdminOverviewTab extends StatelessWidget {
             ),
             const SizedBox(height: 12),
 
+            // Card Doanh thu & Gói đăng ký
+            Builder(
+              builder: (ctx) {
+                final subProv = ctx.watch<SubscriptionProvider>();
+                final curFormat = NumberFormat.currency(locale: 'vi_VN', symbol: 'đ');
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  child: InkWell(
+                    onTap: () => onSwitchTab(5),
+                    borderRadius: BorderRadius.circular(16),
+                    child: Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            AppTheme.primary.withOpacity(0.15),
+                            AppTheme.surface,
+                          ],
+                        ),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: AppTheme.primary.withOpacity(0.4)),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: AppTheme.primary.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(
+                              Icons.monetization_on_rounded,
+                              color: AppTheme.primary,
+                              size: 26,
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    const Text(
+                                      'Doanh Thu & Gói Cước',
+                                      style: TextStyle(
+                                        color: AppTheme.textSecondary,
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    Text(
+                                      curFormat.format(subProv.totalRevenueVnd),
+                                      style: const TextStyle(
+                                        color: AppTheme.primary,
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 3),
+                                Text(
+                                  'Player VIP: ${curFormat.format(subProv.playerVipRevenueVnd)} • Duy trì Shop: ${curFormat.format(subProv.shopSubscriptionRevenueVnd)}',
+                                  style: const TextStyle(
+                                    color: AppTheme.textMuted,
+                                    fontSize: 11.5,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          const Icon(Icons.arrow_forward_ios_rounded, size: 14, color: AppTheme.primary),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+
             // Card Thông báo phát hành trải ngang cân đối bên dưới
             InkWell(
-              onTap: () => onSwitchTab(3),
+              onTap: () => onSwitchTab(4),
               borderRadius: BorderRadius.circular(16),
               child: Container(
                 padding: const EdgeInsets.all(16),
@@ -823,20 +914,42 @@ class _AdminUsersTabState extends State<_AdminUsersTab> {
                                   ),
                                   const SizedBox(width: 12),
                                   Expanded(
-                                    child: Wrap(
-                                      spacing: 8,
-                                      runSpacing: 4,
-                                      crossAxisAlignment:
-                                          WrapCrossAlignment.center,
+                                    child: Row(
                                       children: [
-                                        Text(
-                                          u.fullName,
-                                          style: const TextStyle(
-                                            color: AppTheme.textPrimary,
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 15.5,
+                                        Expanded(
+                                          child: Text(
+                                            u.fullName,
+                                            style: const TextStyle(
+                                              color: AppTheme.textPrimary,
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 15.5,
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
                                           ),
                                         ),
+                                        const SizedBox(width: 8),
+                                        if (u.isBlocked) ...[
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 6,
+                                              vertical: 3,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: AppTheme.danger.withOpacity(0.2),
+                                              borderRadius: BorderRadius.circular(6),
+                                            ),
+                                            child: const Text(
+                                              'ĐÃ KHÓA',
+                                              style: TextStyle(
+                                                color: AppTheme.danger,
+                                                fontSize: 9.5,
+                                                fontWeight: FontWeight.w900,
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 6),
+                                        ],
                                         Container(
                                           padding: const EdgeInsets.symmetric(
                                             horizontal: 8,
@@ -844,8 +957,7 @@ class _AdminUsersTabState extends State<_AdminUsersTab> {
                                           ),
                                           decoration: BoxDecoration(
                                             color: roleColor.withOpacity(0.15),
-                                            borderRadius:
-                                                BorderRadius.circular(8),
+                                            borderRadius: BorderRadius.circular(8),
                                             border: Border.all(
                                               color: roleColor.withOpacity(0.5),
                                             ),
@@ -859,27 +971,6 @@ class _AdminUsersTabState extends State<_AdminUsersTab> {
                                             ),
                                           ),
                                         ),
-                                        if (u.isBlocked)
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 6,
-                                              vertical: 3,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: AppTheme.danger
-                                                  .withOpacity(0.2),
-                                              borderRadius:
-                                                  BorderRadius.circular(6),
-                                            ),
-                                            child: const Text(
-                                              'ĐÃ KHÓA',
-                                              style: TextStyle(
-                                                color: AppTheme.danger,
-                                                fontSize: 9.5,
-                                                fontWeight: FontWeight.w900,
-                                              ),
-                                            ),
-                                          ),
                                       ],
                                     ),
                                   ),
@@ -1339,7 +1430,7 @@ class _AdminShopsProductsTabState extends State<_AdminShopsProductsTab>
             labelColor: AppTheme.primary,
             unselectedLabelColor: AppTheme.textSecondary,
             tabs: [
-              Tab(text: 'Duyệt & Quản Lý Shop (${allShops.length})'),
+              Tab(text: 'Duyệt & Quản Lý Shop'),
               Tab(text: 'Duyệt Vật Phẩm & Dịch Vụ (${allProducts.length})'),
             ],
           ),
@@ -1543,51 +1634,48 @@ class _AdminShopsProductsTabState extends State<_AdminShopsProductsTab>
                                                 ),
                                               ),
                                             ),
-                                            Container(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                horizontal: 8,
-                                                vertical: 3,
-                                              ),
-                                              decoration: BoxDecoration(
-                                                color: statusColor
-                                                    .withOpacity(0.16),
-                                                borderRadius:
-                                                    BorderRadius.circular(8),
-                                                border: Border.all(
-                                                  color: statusColor
-                                                      .withOpacity(0.5),
-                                                ),
-                                              ),
-                                              child: Row(
-                                                mainAxisSize: MainAxisSize.min,
-                                                children: [
-                                                  if (s.isVerifiedPartner) ...[
-                                                    const Icon(
-                                                      Icons.verified_rounded,
-                                                      size: 13,
-                                                      color: AppTheme.primary,
-                                                    ),
-                                                    const SizedBox(width: 3),
-                                                  ],
-                                                  Text(
-                                                    s.statusDisplayName,
-                                                    style: TextStyle(
-                                                      color: statusColor,
-                                                      fontSize: 10.5,
-                                                      fontWeight: FontWeight.bold,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                            const SizedBox(width: 4),
                                             const Icon(
                                               Icons.chevron_right_rounded,
                                               color: AppTheme.textMuted,
                                               size: 20,
                                             ),
                                           ],
+                                        ),
+                                        const SizedBox(height: 6),
+                                        // Mục phân biệt trạng thái đưa xuống dưới tên shop
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 8,
+                                            vertical: 3,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: statusColor.withOpacity(0.16),
+                                            borderRadius: BorderRadius.circular(8),
+                                            border: Border.all(
+                                              color: statusColor.withOpacity(0.5),
+                                            ),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              if (s.isVerifiedPartner) ...[
+                                                const Icon(
+                                                  Icons.verified_rounded,
+                                                  size: 13,
+                                                  color: AppTheme.primary,
+                                                ),
+                                                const SizedBox(width: 3),
+                                              ],
+                                              Text(
+                                                s.statusDisplayName,
+                                                style: TextStyle(
+                                                  color: statusColor,
+                                                  fontSize: 10.5,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
                                         ),
                                         const SizedBox(height: 6),
                                         if (s.isRegisteredOnApp)
@@ -1606,28 +1694,6 @@ class _AdminShopsProductsTabState extends State<_AdminShopsProductsTab>
                                                     color: AppTheme.primary,
                                                     fontSize: 11.5,
                                                     fontWeight: FontWeight.w600,
-                                                  ),
-                                                  maxLines: 1,
-                                                  overflow: TextOverflow.ellipsis,
-                                                ),
-                                              ),
-                                            ],
-                                          )
-                                        else
-                                          const Row(
-                                            children: [
-                                              Icon(
-                                                Icons.map_outlined,
-                                                size: 14,
-                                                color: AppTheme.textMuted,
-                                              ),
-                                              SizedBox(width: 4),
-                                              Expanded(
-                                                child: Text(
-                                                  'Địa điểm Google Maps • Chưa có chủ gian hàng',
-                                                  style: TextStyle(
-                                                    color: AppTheme.textMuted,
-                                                    fontSize: 11.5,
                                                   ),
                                                   maxLines: 1,
                                                   overflow: TextOverflow.ellipsis,
@@ -2757,7 +2823,7 @@ class _AdminCommunityChatTabState extends State<_AdminCommunityChatTab> {
                           overflow: TextOverflow.ellipsis,
                         ),
                         Text(
-                          'Mã luồng: ${currentThread.id} • ${currentThread.messages.length} tin nhắn',
+                          '${currentThread.messages.length} tin nhắn',
                           style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
                         ),
                       ],
@@ -2783,7 +2849,7 @@ class _AdminCommunityChatTabState extends State<_AdminCommunityChatTab> {
                           SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              'Admin có quyền xóa tin nhắn ngôn từ thù địch, quấy rối hoặc giao dịch gian lận.',
+                              'Kiểm duyệt đoạn chat giữa khách hàng và shop để lưu trữ bằng chứng khi có tranh chấp.',
                               style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
                             ),
                           ),
@@ -2944,43 +3010,7 @@ class _AdminCommunityChatTabState extends State<_AdminCommunityChatTab> {
     );
   }
 
-  void _confirmDeleteThread(BuildContext context, ChatThread thread) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppTheme.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        title: const Text(
-          'Xóa toàn bộ cuộc trò chuyện?',
-          style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold, fontSize: 16),
-        ),
-        content: Text(
-          'Bạn có chắc chắn muốn xóa vĩnh viễn đoạn chat giữa người dùng và "${thread.shopName}" do vi phạm tiêu chuẩn cộng đồng không?',
-          style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Hủy', style: TextStyle(color: AppTheme.textMuted)),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              context.read<ChatProvider>().deleteThread(thread.id);
-              Navigator.pop(ctx);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Đã xóa cuộc hội thoại khỏi hệ thống!'),
-                  backgroundColor: AppTheme.danger,
-                ),
-              );
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.danger),
-            child: const Text('Xác nhận xóa', style: TextStyle(fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
-    );
-  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -3017,7 +3047,7 @@ class _AdminCommunityChatTabState extends State<_AdminCommunityChatTab> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Giám sát Tin nhắn & Tiêu chuẩn',
+                    'Giám sát tin nhắn',
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w800,
@@ -3026,7 +3056,7 @@ class _AdminCommunityChatTabState extends State<_AdminCommunityChatTab> {
                   ),
                   SizedBox(height: 2),
                   Text(
-                    'Kiểm duyệt đoạn chat giữa khách hàng & tiệm đan vợt',
+                    'Kiểm duyệt đoạn chat giữa khách hàng và shop',
                     style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
                   ),
                 ],
@@ -3359,12 +3389,7 @@ class _AdminCommunityChatTabState extends State<_AdminCommunityChatTab> {
                             ),
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        IconButton(
-                          tooltip: 'Xóa toàn bộ cuộc trò chuyện',
-                          icon: const Icon(Icons.delete_forever_rounded, color: AppTheme.danger, size: 22),
-                          onPressed: () => _confirmDeleteThread(context, thread),
-                        ),
+
                       ],
                     ),
                   ],

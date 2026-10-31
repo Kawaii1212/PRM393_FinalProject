@@ -29,6 +29,7 @@ class AdminProvider with ChangeNotifier {
   String? _errorMessage;
 
   List<UserModel> get users => List.unmodifiable(_users);
+  List<UserModel> get allUsers => List.unmodifiable(_users);
   List<UserRacketRecord> get allUserRackets =>
       List.unmodifiable(_allUserRackets);
   bool get isLoading => _isLoading;

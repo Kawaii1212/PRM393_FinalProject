@@ -1225,52 +1225,7 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
                 ],
               ),
             )
-          else if (isShopApproved)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              decoration: BoxDecoration(
-                color: AppTheme.primary.withOpacity(0.08),
-                border: const Border(
-                  bottom: BorderSide(color: AppTheme.border),
-                ),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.shield_outlined, color: AppTheme.primary, size: 16),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Shop đối tác chính thức • ${shop.machineModel}. Nếu phát hiện gian dối, hãy bấm 🚩 để báo cáo Admin.',
-                      style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  if (isPlayer)
-                    InkWell(
-                      onTap: () {
-                        ShopReportSheet.show(
-                          context,
-                          shopId: targetShopId,
-                          shopName: thread.shopName,
-                          threadId: thread.id,
-                        );
-                      },
-                      child: const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                        child: Text(
-                          'Báo cáo',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: AppTheme.danger,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            )
+
           else
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),

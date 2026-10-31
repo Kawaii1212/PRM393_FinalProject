@@ -335,7 +335,7 @@ class _AddEditRacketScreenState extends State<AddEditRacketScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Group 0: Hình ảnh cây vợt (Racket Avatar)
-              _sectionHeader('Ảnh Đại Diện Cây Vợt (Hiển thị ở Trang Chủ & Gara)'),
+              _sectionHeader('Ảnh Đại Diện Cây Vợt'),
               const SizedBox(height: 10),
               RacketImageWidget(
                 imageUrl: _imageUrl,

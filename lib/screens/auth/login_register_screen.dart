@@ -233,6 +233,8 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
             ownerName: registeredUser.fullName,
             ownerEmail: registeredUser.email,
             status: 'pending', // Chờ Admin phê duyệt
+            createdAt: DateTime.now(),
+            trialExpiresAt: DateTime.now().add(const Duration(days: 30)),
           );
           await shopProvider.upsertShop(newShop);
         }

@@ -20,6 +20,8 @@ import '../sport/sport_selection_screen.dart';
 import '../injury/injury_assessment_screen.dart';
 import '../injury/injury_history_screen.dart';
 import '../auth/login_register_screen.dart';
+import '../../models/user_model.dart';
+import '../subscription/upgrade_vip_dialog.dart';
 
 class HomeDashboardScreen extends StatelessWidget {
   final Function(int)? onNavigateTab;
@@ -378,11 +380,22 @@ class HomeDashboardScreen extends StatelessWidget {
                   onTap: () {
                     final authProv = context.read<AuthProvider>();
                     final racketProv = context.read<RacketProvider>();
+                    final currentUser = authProv.currentUser;
                     if (authProv.isGuest && racketProv.allRackets.length >= 3) {
                       _openFeatureOrPromptLogin(
                         context,
                         screen: const SizedBox(),
                         featureName: 'Thêm hơn 3 cây vợt vào Gara',
+                      );
+                      return;
+                    }
+                    if (currentUser != null &&
+                        currentUser.role == UserRole.player &&
+                        !currentUser.canAddRacket(racketProv.allRackets.length)) {
+                      UpgradeVipDialog.show(
+                        context,
+                        featurePrompt:
+                            'Tài khoản Miễn phí chỉ được thêm tối đa 5 cây vợt vào Gara (Hiện có: ${racketProv.allRackets.length}/5 cây).\nHãy nâng cấp gói VIP để quản lý không giới hạn số lượng vợt!',
                       );
                       return;
                     }
@@ -618,6 +631,7 @@ class HomeDashboardScreen extends StatelessWidget {
     required String featureName,
   }) {
     final authProv = context.read<AuthProvider>();
+    final currentUser = authProv.currentUser;
     if (authProv.isGuest) {
       showDialog(
         context: context,
@@ -665,6 +679,17 @@ class HomeDashboardScreen extends StatelessWidget {
             ),
           ],
         ),
+      );
+      return;
+    }
+
+    if (currentUser != null &&
+        currentUser.role == UserRole.player &&
+        !currentUser.canAccessHealthFeatures) {
+      UpgradeVipDialog.show(
+        context,
+        featurePrompt:
+            'Chức năng $featureName chỉ dành riêng cho Hội Viên VIP.\nNâng cấp gói VIP ngay (chỉ từ 29k/tháng) để chẩn đoán chấn thương chuẩn y khoa và theo dõi lộ trình phục hồi!',
       );
       return;
     }
@@ -815,14 +840,6 @@ class HomeDashboardScreen extends StatelessWidget {
                     color: AppTheme.textPrimary,
                     fontWeight: FontWeight.bold,
                     fontSize: 13,
-                  ),
-                ),
-                SizedBox(height: 2),
-                Text(
-                  'Tự kiểm tra khớp cổ tay, khuỷu tay và tương quan lực căng vợt.',
-                  style: TextStyle(
-                    color: AppTheme.textSecondary,
-                    fontSize: 11.5,
                   ),
                 ),
               ],

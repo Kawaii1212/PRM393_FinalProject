@@ -12,6 +12,7 @@ import 'providers/chat_provider.dart';
 import 'providers/notification_provider.dart';
 import 'providers/order_provider.dart';
 import 'providers/injury_provider.dart';
+import 'providers/subscription_provider.dart';
 import 'screens/auth/splash_screen.dart';
 
 Future<void> main() async {
@@ -62,6 +63,7 @@ class GearSportsApp extends StatelessWidget {
         ),
         ChangeNotifierProvider(create: (_) => NotificationProvider()),
         ChangeNotifierProvider(create: (_) => OrderProvider()),
+        ChangeNotifierProvider(create: (_) => SubscriptionProvider()),
         ChangeNotifierProxyProvider<AuthProvider, InjuryProvider>(
           create: (_) => InjuryProvider(),
           update: (_, auth, injuryProv) {

@@ -48,6 +48,8 @@ class UserModel {
   final String? shopName;
   final bool isBlocked;
   final DateTime createdAt;
+  final bool isVip;
+  final DateTime? vipExpiresAt;
 
   const UserModel({
     required this.uid,
@@ -59,7 +61,36 @@ class UserModel {
     this.shopName,
     this.isBlocked = false,
     required this.createdAt,
+    this.isVip = false,
+    this.vipExpiresAt,
   });
+
+  /// Kiểm tra gói VIP có đang còn hiệu lực hay không
+  bool get isVipActive {
+    if (role == UserRole.admin) return true; // Admin có toàn quyền truy cập
+    if (!isVip) return false;
+    if (vipExpiresAt == null) return true; // VIP vĩnh viễn (nếu không set hạn)
+    return vipExpiresAt!.isAfter(DateTime.now());
+  }
+
+  /// Số ngày VIP còn lại
+  int get vipDaysRemaining {
+    if (!isVipActive) return 0;
+    if (vipExpiresAt == null) return 999;
+    final diff = vipExpiresAt!.difference(DateTime.now()).inDays + 1;
+    return diff > 0 ? diff : 0;
+  }
+
+  /// Kiểm tra quyền thêm vợt vào Gara (Miễn phí: tối đa 5 cây; VIP: không giới hạn)
+  bool canAddRacket(int currentRacketCount) {
+    if (isVipActive || role == UserRole.admin) return true;
+    return currentRacketCount < 5;
+  }
+
+  /// Kiểm tra quyền sử dụng Bác sĩ thể thao & Sổ tay chấn thương
+  bool get canAccessHealthFeatures {
+    return isVipActive || role == UserRole.admin;
+  }
 
   UserModel copyWith({
     String? uid,
@@ -71,6 +102,8 @@ class UserModel {
     String? shopName,
     bool? isBlocked,
     DateTime? createdAt,
+    bool? isVip,
+    DateTime? vipExpiresAt,
   }) {
     return UserModel(
       uid: uid ?? this.uid,
@@ -82,6 +115,8 @@ class UserModel {
       shopName: shopName ?? this.shopName,
       isBlocked: isBlocked ?? this.isBlocked,
       createdAt: createdAt ?? this.createdAt,
+      isVip: isVip ?? this.isVip,
+      vipExpiresAt: vipExpiresAt ?? this.vipExpiresAt,
     );
   }
 
@@ -96,6 +131,8 @@ class UserModel {
       'shopName': shopName,
       'isBlocked': isBlocked,
       'createdAt': createdAt.toIso8601String(),
+      'isVip': isVip,
+      'vipExpiresAt': vipExpiresAt?.toIso8601String(),
     };
   }
 
@@ -113,6 +150,10 @@ class UserModel {
       createdAt: map['createdAt'] != null
           ? (DateTime.tryParse(map['createdAt'].toString()) ?? DateTime.now())
           : DateTime.now(),
+      isVip: map['isVip'] == true,
+      vipExpiresAt: map['vipExpiresAt'] != null
+          ? DateTime.tryParse(map['vipExpiresAt'].toString())
+          : null,
     );
   }
 }
