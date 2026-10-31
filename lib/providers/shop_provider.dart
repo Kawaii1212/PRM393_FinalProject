@@ -105,11 +105,17 @@ class ShopProvider with ChangeNotifier {
   }
 
   /// Tìm cửa hàng của Chủ Shop đang đăng nhập (`ownerUid`)
-  Shop? getShopForOwner(String ownerUid) {
+  /// Tìm trực tiếp từ toàn bộ danh mục cửa hàng mà không bị lọc theo bán kính GPS (8km) hay trạng thái duyệt
+  Shop? getShopForOwner(String? ownerUid) {
+    if (ownerUid == null || ownerUid.trim().isEmpty) return null;
     try {
       return _firestoreShops.firstWhere((s) => s.ownerUid == ownerUid);
     } catch (_) {
-      return null;
+      try {
+        return allShopsForAdmin.firstWhere((s) => s.ownerUid == ownerUid);
+      } catch (_) {
+        return null;
+      }
     }
   }
 

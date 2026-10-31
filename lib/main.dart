@@ -50,11 +50,10 @@ class GearSportsApp extends StatelessWidget {
           create: (_) => ChatProvider(),
           update: (_, auth, shopProv, chatProv) {
             final provider = chatProv ?? ChatProvider();
-            final myShop = shopProv.shops
-                .where((s) => s.ownerUid == auth.currentUser?.uid)
-                .firstOrNull;
+            final currentUid = auth.currentUser?.uid;
+            final myShop = shopProv.getShopForOwner(currentUid);
             provider.syncForUser(
-              auth.currentUser?.uid,
+              currentUid,
               role: auth.currentUser?.role,
               shopId: myShop?.id,
             );
