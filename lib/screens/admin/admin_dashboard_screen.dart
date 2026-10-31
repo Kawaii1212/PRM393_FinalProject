@@ -668,6 +668,19 @@ class _AdminUsersTabState extends State<_AdminUsersTab> {
                 user.playStyle,
               ),
             ],
+            if (user.role == UserRole.player) ...[
+              const SizedBox(height: 10),
+              _detailRow(
+                Icons.workspace_premium_rounded,
+                'Gói thành viên',
+                user.isVipActive
+                    ? '👑 VIP Player (${user.vipDaysRemaining} ngày còn lại)'
+                    : 'Tài khoản thường (Free)',
+                valueColor: user.isVipActive
+                    ? const Color(0xFFFFD700)
+                    : AppTheme.textSecondary,
+              ),
+            ],
           ],
         ),
         actions: [
@@ -676,11 +689,27 @@ class _AdminUsersTabState extends State<_AdminUsersTab> {
             child: const Text(
               'Đóng',
               style: TextStyle(
-                color: AppTheme.primary,
+                color: AppTheme.textSecondary,
                 fontWeight: FontWeight.bold,
               ),
             ),
           ),
+          if (user.role == UserRole.player)
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.pop(ctx);
+                _showGrantVipModal(context, user);
+              },
+              icon: const Icon(Icons.workspace_premium_rounded, size: 16),
+              label: Text(
+                user.isVipActive ? 'Gia Hạn VIP' : 'Cấp VIP Ngay',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFFFD700),
+                foregroundColor: Colors.black,
+              ),
+            ),
         ],
       ),
     );
@@ -774,13 +803,169 @@ class _AdminUsersTabState extends State<_AdminUsersTab> {
     );
   }
 
+  void _showGrantVipModal(BuildContext context, UserModel user) {
+    int selectedDays = 30;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (modalCtx, setModalState) => Container(
+          decoration: const BoxDecoration(
+            color: AppTheme.surface,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          padding: EdgeInsets.fromLTRB(
+            20,
+            16,
+            20,
+            MediaQuery.of(context).viewInsets.bottom + 24,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppTheme.border,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFD700).withOpacity(0.18),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(
+                      Icons.workspace_premium_rounded,
+                      color: Color(0xFFFFD700),
+                      size: 24,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          user.isVipActive ? 'Gia Hạn Gói VIP Player' : 'Cấp Đặc Quyền VIP Player',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.textPrimary,
+                          ),
+                        ),
+                        Text(
+                          '${user.fullName} (${user.email})',
+                          style: const TextStyle(fontSize: 11.5, color: AppTheme.textMuted),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              const Text(
+                'Thời hạn cấp VIP:',
+                style: TextStyle(color: AppTheme.textSecondary, fontSize: 12.5),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: ChoiceChip(
+                      label: const Center(child: Text('30 Ngày')),
+                      selected: selectedDays == 30,
+                      onSelected: (s) {
+                        if (s) setModalState(() => selectedDays = 30);
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: ChoiceChip(
+                      label: const Center(child: Text('60 Ngày')),
+                      selected: selectedDays == 60,
+                      onSelected: (s) {
+                        if (s) setModalState(() => selectedDays = 60);
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: ChoiceChip(
+                      label: const Center(child: Text('90 Ngày')),
+                      selected: selectedDays == 90,
+                      onSelected: (s) {
+                        if (s) setModalState(() => selectedDays = 90);
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () async {
+                    Navigator.pop(ctx);
+                    final subProv = context.read<SubscriptionProvider>();
+                    final ok = await subProv.adminGrantVip(
+                      context: context,
+                      user: user,
+                      days: selectedDays,
+                    );
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(ok
+                              ? 'Đã cấp thành công $selectedDays ngày VIP cho ${user.fullName}!'
+                              : 'Cấp VIP thất bại'),
+                          backgroundColor: ok ? AppTheme.primary : AppTheme.danger,
+                        ),
+                      );
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFFFD700),
+                    foregroundColor: Colors.black,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: const Text(
+                    'Xác Nhận Kích Hoạt VIP Ngay',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final adminProv = context.watch<AdminProvider>();
     final currentAdminUid = context.watch<AuthProvider>().currentUser?.uid;
 
     final filteredUsers = adminProv.users.where((u) {
-      final matchesRole = _roleFilter == 'all' || u.role.name == _roleFilter;
+      final matchesRole = _roleFilter == 'all'
+          ? true
+          : _roleFilter == 'player_vip'
+              ? (u.role == UserRole.player && u.isVipActive)
+              : u.role.name == _roleFilter;
       final q = _searchQuery.trim().toLowerCase();
       final matchesSearch = q.isEmpty ||
           u.fullName.toLowerCase().contains(q) ||
@@ -830,6 +1015,13 @@ class _AdminUsersTabState extends State<_AdminUsersTab> {
                 value: 'player',
                 child: Text(
                   'Người chơi (${adminProv.playerCount})',
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              DropdownMenuItem(
+                value: 'player_vip',
+                child: Text(
+                  '👑 Người chơi VIP (${adminProv.users.where((u) => u.role == UserRole.player && u.isVipActive).length})',
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
@@ -971,6 +1163,52 @@ class _AdminUsersTabState extends State<_AdminUsersTab> {
                                             ),
                                           ),
                                         ),
+                                        if (u.role == UserRole.player) ...[
+                                          const SizedBox(width: 6),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 8,
+                                              vertical: 3,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: u.isVipActive
+                                                  ? const Color(0xFFFFD700).withOpacity(0.18)
+                                                  : AppTheme.surfaceLight,
+                                              borderRadius: BorderRadius.circular(8),
+                                              border: Border.all(
+                                                color: u.isVipActive
+                                                    ? const Color(0xFFFFD700)
+                                                    : AppTheme.border,
+                                                width: u.isVipActive ? 1.2 : 1,
+                                              ),
+                                            ),
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                if (u.isVipActive) ...[
+                                                  const Text('👑 ', style: TextStyle(fontSize: 10)),
+                                                  Text(
+                                                    'VIP (${u.vipDaysRemaining} ngày)',
+                                                    style: const TextStyle(
+                                                      color: Color(0xFFFFD700),
+                                                      fontSize: 10,
+                                                      fontWeight: FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                ] else ...[
+                                                  const Text(
+                                                    'Free',
+                                                    style: TextStyle(
+                                                      color: AppTheme.textSecondary,
+                                                      fontSize: 10,
+                                                      fontWeight: FontWeight.w600,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ],
+                                            ),
+                                          ),
+                                        ],
                                       ],
                                     ),
                                   ),
@@ -1859,18 +2097,35 @@ class _AdminShopsProductsTabState extends State<_AdminShopsProductsTab>
                                               Expanded(
                                                 child: ElevatedButton.icon(
                                                   onPressed: () async {
+                                                    final rejectedCount = shopProv
+                                                        .getDirectProductsForShop(s.id)
+                                                        .where((p) => p.isRejected)
+                                                        .length;
                                                     await shopProv
                                                         .updateShopStatus(
                                                       s,
                                                       'approved',
                                                     );
+                                                    if (s.ownerUid != null && s.ownerUid!.isNotEmpty && context.mounted) {
+                                                      try {
+                                                        final notifProv = context.read<NotificationProvider>();
+                                                        await notifProv.addNotification(
+                                                          title: 'Cửa hàng đã được phê duyệt! 🎉',
+                                                          message: 'Chúc mừng! Cửa hàng "${s.name}" của bạn đã được Admin phê duyệt hoạt động chính thức trên bản đồ Gear Sports.',
+                                                          type: NotificationType.shopNotice,
+                                                          targetUserId: s.ownerUid,
+                                                        );
+                                                      } catch (_) {}
+                                                    }
                                                     if (context.mounted) {
                                                       ScaffoldMessenger.of(
                                                         context,
                                                       ).showSnackBar(
                                                         SnackBar(
                                                           content: Text(
-                                                            'Đã phê duyệt cửa hàng "${s.name}" hoạt động!',
+                                                            rejectedCount > 0
+                                                                ? 'Đã phê duyệt cửa hàng "${s.name}" hoạt động! ($rejectedCount sản phẩm bị từ chối trước đó không được duyệt)'
+                                                                : 'Đã phê duyệt cửa hàng "${s.name}" hoạt động!',
                                                           ),
                                                           backgroundColor:
                                                               AppTheme
@@ -1924,6 +2179,17 @@ class _AdminShopsProductsTabState extends State<_AdminShopsProductsTab>
                                                       s,
                                                       'disabled',
                                                     );
+                                                    if (s.ownerUid != null && s.ownerUid!.isNotEmpty && context.mounted) {
+                                                      try {
+                                                        final notifProv = context.read<NotificationProvider>();
+                                                        await notifProv.addNotification(
+                                                          title: 'Cửa hàng tạm ngưng hoạt động ⚠️',
+                                                          message: 'Cửa hàng "${s.name}" của bạn đã bị tạm ngưng hoạt động bởi Admin. Vui lòng kiểm tra lại thông tin hồ sơ hoặc liên hệ hỗ trợ.',
+                                                          type: NotificationType.systemAlert,
+                                                          targetUserId: s.ownerUid,
+                                                        );
+                                                      } catch (_) {}
+                                                    }
                                                     if (context.mounted) {
                                                       ScaffoldMessenger.of(
                                                         context,
@@ -2547,6 +2813,37 @@ class _AdminBroadcastNotificationsTabState
                   ],
                 ),
                 const SizedBox(height: 16),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: [
+                    ActionChip(
+                      avatar: const Icon(Icons.build_circle_outlined, size: 15, color: Colors.orangeAccent),
+                      label: const Text('Mẫu: Bảo trì hệ thống', style: TextStyle(fontSize: 11.5)),
+                      onPressed: () {
+                        setState(() {
+                          _selectedType = NotificationType.systemAlert;
+                          _titleCtrl.text = '🛠️ Thông Báo Bảo Trì & Nâng Cấp Hệ Thống';
+                          _msgCtrl.text =
+                              'Hệ thống Gear Sports sẽ bảo trì nâng cấp máy chủ từ 00:00 đến 02:00 ngày mai. Quý cửa hàng và người chơi vui lòng lưu ý.';
+                        });
+                      },
+                    ),
+                    ActionChip(
+                      avatar: const Icon(Icons.storefront_outlined, size: 15, color: Color(0xFFFFD700)),
+                      label: const Text('Mẫu: Thông báo Chủ Shop', style: TextStyle(fontSize: 11.5)),
+                      onPressed: () {
+                        setState(() {
+                          _selectedType = NotificationType.shopNotice;
+                          _titleCtrl.text = '📢 Thông Báo Quan Trọng Dành Cho Chủ Shop & Đối Tác';
+                          _msgCtrl.text =
+                              'Ban Quản Trị đã cập nhật quy chế duyệt sản phẩm trưng bày và tối ưu tìm kiếm theo vị trí shop. Mời quý chủ shop kiểm tra thông tin cửa hàng.';
+                        });
+                      },
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
                 DropdownButtonFormField<NotificationType>(
                   value: _selectedType,
                   isExpanded: true,
@@ -2562,6 +2859,20 @@ class _AdminBroadcastNotificationsTabState
                     ),
                   ),
                   items: const [
+                    DropdownMenuItem(
+                      value: NotificationType.systemAlert,
+                      child: Text(
+                        '🛠️ Bảo trì / Nâng cấp hệ thống',
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    DropdownMenuItem(
+                      value: NotificationType.shopNotice,
+                      child: Text(
+                        '🏪 Thông báo tới Chủ Shop / Đối tác',
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
                     DropdownMenuItem(
                       value: NotificationType.promo,
                       child: Text(

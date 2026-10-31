@@ -129,7 +129,49 @@ class ChatProvider with ChangeNotifier {
             final allRemoteThreads = <ChatThread>[];
             for (final doc in snapshot.docs) {
               try {
-                final t = ChatThread.fromMap(doc.data(), docId: doc.id);
+                final data = doc.data();
+                var t = ChatThread.fromMap(data, docId: doc.id);
+
+                // Xác định xem tin nhắn cuối có phải do chính người dùng hiện tại gửi không:
+                final lastSenderId = data['lastSenderId']?.toString() ??
+                    (t.messages.isNotEmpty ? t.messages.last.senderId : null);
+                final lastSenderIsUser = (data['lastSenderIsUser'] as bool?) ??
+                    (t.messages.isNotEmpty ? t.messages.last.isFromUser : null);
+
+                bool isSentByMe = false;
+                if (role == UserRole.stringer) {
+                  // Chủ shop: đã gửi nếu lastSenderIsUser == false hoặc sender khớp với shop
+                  if (lastSenderIsUser == false ||
+                      (lastSenderId != null &&
+                          (lastSenderId == shopId || lastSenderId == userId))) {
+                    isSentByMe = true;
+                  }
+                } else if (role == UserRole.player || role == null) {
+                  // Người chơi: đã gửi nếu lastSenderIsUser == true hoặc sender là 'user'/userId
+                  if (lastSenderIsUser == true ||
+                      (lastSenderId != null &&
+                          (lastSenderId == 'user' || lastSenderId == userId))) {
+                    isSentByMe = true;
+                  }
+                }
+
+                if (isSentByMe) {
+                  t = ChatThread(
+                    id: t.id,
+                    userId: t.userId,
+                    userName: t.userName,
+                    userEmail: t.userEmail,
+                    shopId: t.shopId,
+                    shopOwnerUid: t.shopOwnerUid,
+                    shopName: t.shopName,
+                    shopAvatar: t.shopAvatar,
+                    lastMessage: t.lastMessage,
+                    lastMessageTime: t.lastMessageTime,
+                    unreadCount: 0,
+                    messages: t.messages,
+                  );
+                }
+
                 allRemoteThreads.add(t);
               } catch (e) {
                 debugPrint('Lỗi parse chat_thread doc ${doc.id}: $e');
@@ -348,8 +390,16 @@ class ChatProvider with ChangeNotifier {
       final threadDoc = FirebaseFirestore.instance
           .collection('chat_threads')
           .doc(thread.id);
-      // 1. Cập nhật thread document (lastMessage, lastMessageTime và mảng messages)
-      await threadDoc.set(thread.toMap(), SetOptions(merge: true));
+
+      final threadData = thread.toMap();
+      // Sử dụng FieldValue.increment(1) thay vì đặt cứng unreadCount: 0,
+      // giúp đối phương (người chơi hoặc cửa hàng) nhận được huy hiệu tin nhắn chưa đọc
+      threadData['unreadCount'] = FieldValue.increment(1);
+      threadData['lastSenderId'] = msg.senderId;
+      threadData['lastSenderIsUser'] = msg.isFromUser;
+
+      // 1. Cập nhật thread document (lastMessage, lastMessageTime, mảng messages, và tăng unreadCount đối phương)
+      await threadDoc.set(threadData, SetOptions(merge: true));
       // 2. Lưu tin nhắn chi tiết vào subcollection 'messages'
       await threadDoc.collection('messages').doc(msg.id).set(msg.toMap());
     } catch (e) {

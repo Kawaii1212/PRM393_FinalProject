@@ -9,6 +9,7 @@ import '../../providers/notification_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/tension_badge.dart';
 import 'add_edit_racket_screen.dart';
+import '../notifications/notifications_screen.dart';
 import '../../widgets/racket_image_widget.dart';
 
 class GearDetailScreen extends StatefulWidget {
@@ -313,7 +314,7 @@ class _GearDetailScreenState extends State<GearDetailScreen> {
                               context.read<NotificationProvider>().addNotification(
                                 title: '🏸 Đã ghi nhận đan cước mới!',
                                 message: 'Vợt ${racket.modelName} đã được cập nhật cước ${newLog.stringModel} (${newLog.tensionLbs} lbs).',
-                                type: NotificationType.orderStatus,
+                                type: NotificationType.racketUpdate,
                                 targetRacketId: racket.id,
                               );
 
@@ -343,6 +344,7 @@ class _GearDetailScreenState extends State<GearDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final racketProvider = context.watch<RacketProvider>();
+    final notifProvider = context.watch<NotificationProvider>();
     final racket = racketProvider.getRacketById(widget.racketId);
 
     if (racket == null) {
@@ -358,6 +360,46 @@ class _GearDetailScreenState extends State<GearDetailScreen> {
       appBar: AppBar(
         title: Text('${racket.brand} ${racket.modelName}'),
         actions: [
+          // Nút thông báo kèm chấm đỏ (Badge)
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.notifications_none_rounded),
+                tooltip: 'Thông báo',
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const NotificationsScreen(),
+                    ),
+                  );
+                },
+              ),
+              if (notifProvider.unreadCount > 0)
+                Positioned(
+                  right: 6,
+                  top: 6,
+                  child: Container(
+                    padding: const EdgeInsets.all(3),
+                    constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                    decoration: const BoxDecoration(
+                      color: AppTheme.danger,
+                      shape: BoxShape.circle,
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      '${notifProvider.unreadCount > 99 ? '99+' : notifProvider.unreadCount}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
           IconButton(
             icon: const Icon(Icons.edit_outlined),
             tooltip: 'Chỉnh sửa thông số & tải ảnh vợt',

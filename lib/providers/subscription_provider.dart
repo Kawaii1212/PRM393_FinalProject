@@ -14,6 +14,7 @@ import '../services/sepay_service.dart';
 import 'auth_provider.dart';
 import 'shop_provider.dart';
 import 'notification_provider.dart';
+import 'admin_provider.dart';
 
 class SubscriptionProvider with ChangeNotifier {
   static const String _prefTransactionsKey = 'gearsports_subscription_transactions';
@@ -326,11 +327,29 @@ class SubscriptionProvider with ChangeNotifier {
       );
 
       final authProv = context.read<AuthProvider>();
+      AdminProvider? adminProv;
+      try {
+        adminProv = context.read<AdminProvider>();
+      } catch (_) {}
+
       await authProv.updateVipStatus(
         isVip: true,
         vipExpiresAt: newVipExpires,
         targetUid: user.uid,
       );
+
+      // Cập nhật ngay danh sách _users trong AdminProvider để UI Admin cập nhật tức thì
+      if (adminProv != null) {
+        try {
+          await adminProv.updateUserVipStatus(
+            uid: user.uid,
+            isVip: true,
+            vipExpiresAt: newVipExpires,
+          );
+        } catch (e) {
+          debugPrint('AdminProvider updateUserVipStatus in adminGrantVip warning: $e');
+        }
+      }
 
       await _recordTransaction(transaction);
       notifyListeners();

@@ -424,25 +424,41 @@ class AuthProvider extends ChangeNotifier {
     if (uidToUpdate == null) return false;
 
     try {
+      final prefs = await SharedPreferences.getInstance();
+
+      // 1. Cập nhật phiên hiện tại nếu chính là tài khoản đang đăng nhập
       if (_currentUser != null && _currentUser!.uid == uidToUpdate) {
         final updatedUser = _currentUser!.copyWith(
           isVip: isVip,
           vipExpiresAt: vipExpiresAt,
         );
         _currentUser = updatedUser;
-        final prefs = await SharedPreferences.getInstance();
         await _saveSessionLocally(updatedUser, prefs);
+      }
 
-        final localUsersMap = _getLocalUsersMap(prefs);
-        final emailKey = updatedUser.email.toLowerCase();
-        if (localUsersMap.containsKey(emailKey)) {
-          final existing = localUsersMap[emailKey] as Map<String, dynamic>;
-          localUsersMap[emailKey] = {
-            'password': existing['password'] ?? '123456',
-            'user': updatedUser.toMap(),
-          };
-          await prefs.setString(_prefLocalUsersKey, jsonEncode(localUsersMap));
+      // 2. Cập nhật trong Local Users Map (dành cho cả trường hợp Admin cấp VIP cho người dùng khác)
+      final localUsersMap = _getLocalUsersMap(prefs);
+      bool localUpdated = false;
+      for (final emailKey in localUsersMap.keys) {
+        final entry = localUsersMap[emailKey];
+        if (entry is Map && entry['user'] != null) {
+          final uMap = Map<String, dynamic>.from(entry['user']);
+          if (uMap['uid'] == uidToUpdate) {
+            final u = UserModel.fromMap(uMap).copyWith(
+              isVip: isVip,
+              vipExpiresAt: vipExpiresAt,
+            );
+            localUsersMap[emailKey] = {
+              'password': entry['password'] ?? '123456',
+              'user': u.toMap(),
+            };
+            localUpdated = true;
+            break;
+          }
         }
+      }
+      if (localUpdated) {
+        await prefs.setString(_prefLocalUsersKey, jsonEncode(localUsersMap));
       }
 
       if (_isFirebaseAvailable) {

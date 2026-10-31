@@ -121,28 +121,32 @@ class HomeDashboardScreen extends StatelessWidget {
         actions: [
           // Notification bell
           Stack(
+            clipBehavior: Clip.none,
             children: [
               IconButton(
                 icon: const Icon(Icons.notifications_none_rounded),
+                tooltip: 'Thông báo',
                 onPressed: () {
                   onNavigateTab?.call(4); // Switch to Notifications Tab
                 },
               ),
               if (notifProvider.unreadCount > 0)
                 Positioned(
-                  right: 8,
-                  top: 8,
+                  right: 6,
+                  top: 6,
                   child: Container(
-                    padding: const EdgeInsets.all(4),
+                    padding: const EdgeInsets.all(3),
+                    constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
                     decoration: const BoxDecoration(
                       color: AppTheme.danger,
                       shape: BoxShape.circle,
                     ),
+                    alignment: Alignment.center,
                     child: Text(
-                      '${notifProvider.unreadCount}',
+                      '${notifProvider.unreadCount > 99 ? '99+' : notifProvider.unreadCount}',
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 10,
+                        fontSize: 9.5,
                         fontWeight: FontWeight.bold,
                       ),
                     ),

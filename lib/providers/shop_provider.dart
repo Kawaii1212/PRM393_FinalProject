@@ -375,48 +375,64 @@ class ShopProvider with ChangeNotifier {
   }
 
   /// Admin phê duyệt (`approved`) hoặc vô hiệu hóa (`disabled`) Cửa hàng
-  /// Khi vô hiệu hóa shop, toàn bộ sản phẩm của shop sẽ tạm thời bị vô hiệu hóa theo (Cascade Deactivate)
+  /// Khi phê duyệt shop, tự động duyệt các sản phẩm/dịch vụ của shop.
+  /// Tuy nhiên: chỉ các sản phẩm trước đó KHÔNG bị từ chối mới được duyệt theo ('approved').
+  /// Các sản phẩm đã từng bị Admin từ chối duyệt ('rejected') thì giữ nguyên trạng thái bị từ chối, KHÔNG được duyệt theo.
   Future<void> updateShopStatus(Shop shop, String newStatus) async {
     final updated = shop.copyWith(status: newStatus);
     await upsertShop(updated);
 
-    final isDisabling = (newStatus == 'disabled');
-    for (int i = 0; i < _products.length; i++) {
-      if (_products[i].shopId == shop.id) {
-        _products[i] = _products[i].copyWith(
-          status: isDisabling ? 'rejected' : 'approved',
-        );
-      }
-    }
-    notifyListeners();
+    final isApproved = (newStatus == 'approved');
 
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(
-        _prefProductsKey,
-        jsonEncode(_products.map((p) => p.toMap()).toList()),
-      );
-
-      if (_isFirebaseReady) {
-        final firestore = FirebaseFirestore.instance;
-        final prodsSnap = await firestore
-            .collection('products')
-            .where('shopId', isEqualTo: shop.id)
-            .get()
-            .timeout(const Duration(seconds: 5));
-
-        if (prodsSnap.docs.isNotEmpty) {
-          final batch = firestore.batch();
-          for (final doc in prodsSnap.docs) {
-            batch.update(doc.reference, {
-              'status': isDisabling ? 'rejected' : 'approved',
-            });
+    if (isApproved) {
+      for (int i = 0; i < _products.length; i++) {
+        if (_products[i].shopId == shop.id) {
+          // Chỉ duyệt các sản phẩm KHÔNG bị từ chối (không phải 'rejected')
+          // Sản phẩm nào đã bị Admin từ chối trước đó thì giữ nguyên trạng thái bị từ chối, không duyệt theo
+          if (!_products[i].isRejected) {
+            _products[i] = _products[i].copyWith(
+              status: 'approved',
+            );
           }
-          await batch.commit().timeout(const Duration(seconds: 5));
         }
       }
-    } catch (e) {
-      debugPrint('updateShopStatus cascade products error: $e');
+      notifyListeners();
+
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(
+          _prefProductsKey,
+          jsonEncode(_products.map((p) => p.toMap()).toList()),
+        );
+
+        if (_isFirebaseReady) {
+          final firestore = FirebaseFirestore.instance;
+          final prodsSnap = await firestore
+              .collection('products')
+              .where('shopId', isEqualTo: shop.id)
+              .get()
+              .timeout(const Duration(seconds: 5));
+
+          if (prodsSnap.docs.isNotEmpty) {
+            final batch = firestore.batch();
+            for (final doc in prodsSnap.docs) {
+              final data = doc.data();
+              final currentStatus = data['status'] as String? ?? 'pending';
+              // Chỉ duyệt các sản phẩm chưa bị từ chối trước đó
+              if (currentStatus != 'rejected') {
+                batch.update(doc.reference, {
+                  'status': 'approved',
+                });
+              }
+            }
+            await batch.commit().timeout(const Duration(seconds: 5));
+          }
+        }
+      } catch (e) {
+        debugPrint('updateShopStatus cascade products error: $e');
+      }
+    } else {
+      notifyListeners();
     }
   }
 

@@ -1,12 +1,23 @@
+import 'dart:convert';
 import 'package:finalproject/services/sepay_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:finalproject/models/racket_model.dart';
 import 'package:finalproject/models/user_model.dart';
 import 'package:finalproject/models/shop_model.dart';
 import 'package:finalproject/models/subscription_model.dart';
+import 'package:finalproject/models/notification_model.dart';
+import 'package:finalproject/models/chat_model.dart';
+import 'package:finalproject/providers/notification_provider.dart';
+import 'package:finalproject/providers/chat_provider.dart';
+import 'package:finalproject/providers/admin_provider.dart';
+import 'package:finalproject/providers/shop_provider.dart';
+import 'package:finalproject/models/product_model.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:finalproject/services/vietqr_service.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   group('PRM393 Unit Tests - Badminton Racket & Tension Logic', () {
     test('Kiểm tra rủi ro vượt mức căng tối đa (Overload Tension Check)', () {
       final racket = Racket(
@@ -219,6 +230,323 @@ void main() {
       final newSessionCode = SepayService.normalizeCode('GS VIP CRH93 84729103');
       // Nội dung cũ không chứa mã phiên mới 8 chữ số -> Khớp thất bại (an toàn, không gia hạn bậy)
       expect(normalizedOldBank.contains(newSessionCode), isFalse);
+    });
+
+    test('Kiểm tra thông báo của người chơi & tăng/giảm số chấm đỏ khi thêm vợt (Player Notification & Red Dot Badge)', () async {
+      SharedPreferences.setMockInitialValues({});
+      final notifProv = NotificationProvider();
+
+      // Ban đầu không có thông báo, unreadCount = 0 (không có chấm đỏ)
+      expect(notifProv.unreadCount, equals(0));
+
+      // 1. Thêm vợt thành công -> Sinh thông báo racketUpdate -> unreadCount tăng lên 1 (chấm đỏ hiện số 1)
+      await notifProv.addNotification(
+        title: '🏸 Đã thêm vợt mới vào Gara!',
+        message: 'Cây vợt Yonex Astrox 100ZZ đã được thêm thành công vào Gara của bạn.',
+        type: NotificationType.racketUpdate,
+        targetRacketId: 'racket_123',
+      );
+
+      expect(notifProv.unreadCount, equals(1));
+      expect(notifProv.notifications.length, equals(1));
+      expect(notifProv.notifications.first.type, equals(NotificationType.racketUpdate));
+      expect(notifProv.notifications.first.isRead, isFalse);
+
+      // 2. Thêm tiếp 1 cây vợt khác -> unreadCount tăng lên 2 (chấm đỏ hiện số 2)
+      await notifProv.addNotification(
+        title: '🏸 Đã thêm vợt mới vào Gara!',
+        message: 'Cây vợt Victor Thruster Ryuga II đã được thêm thành công vào Gara của bạn.',
+        type: NotificationType.racketUpdate,
+        targetRacketId: 'racket_456',
+      );
+
+      expect(notifProv.unreadCount, equals(2));
+
+      // 3. Người chơi chạm vào đọc 1 thông báo -> unreadCount giảm về 1
+      final firstNotifId = notifProv.notifications.first.id;
+      await notifProv.markAsRead(firstNotifId);
+      expect(notifProv.unreadCount, equals(1));
+
+      // 4. Nhấn "Đã đọc tất cả" -> unreadCount về 0 (chấm đỏ biến mất)
+      await notifProv.markAllAsRead();
+      expect(notifProv.unreadCount, equals(0));
+
+      // 5. Kiểm tra cảnh báo cước chùng cho vợt cũ
+      final oldRacket = Racket(
+        id: 'r_old_tension',
+        brand: 'Yonex',
+        modelName: 'Nanoflare 800',
+        weightU: '4U',
+        shaftStiffness: 'Cứng',
+        balancePointMm: 295,
+        maxTensionLbs: 28.0,
+        initialTensionLbs: 26.0,
+        strungDate: DateTime.now().subtract(const Duration(days: 60)),
+        sessionsPlayed: 25,
+      );
+      expect(oldRacket.needsRestring, isTrue);
+
+      await notifProv.syncRacketTensionAlerts([oldRacket]);
+      expect(notifProv.unreadCount, equals(1));
+      expect(notifProv.notifications.any((n) => n.type == NotificationType.tensionAlert), isTrue);
+    });
+
+    test('Kiểm tra huy hiệu tin nhắn chưa đọc (unreadMessagesCount) và cơ chế tăng giảm unreadCount', () async {
+      SharedPreferences.setMockInitialValues({});
+      final chatProv = ChatProvider();
+
+      // Ban đầu không có tin nhắn chưa đọc
+      expect(chatProv.unreadMessagesCount, equals(0));
+
+      // Giả lập cuộc trò chuyện 1 có 1 tin nhắn chưa đọc từ đối phương
+      final thread1 = ChatThread(
+        id: 'thread_user1_shop1',
+        userId: 'user1',
+        shopId: 'shop1',
+        shopName: 'Shop Cầu Lông Minh Sport',
+        shopAvatar: '',
+        lastMessage: 'Chào bạn, cước BG66 Ultimax bên shop còn hàng nhé!',
+        lastMessageTime: DateTime.now(),
+        unreadCount: 1,
+        messages: [
+          ChatMessage(
+            id: 'm1',
+            senderId: 'shop1',
+            text: 'Chào bạn, cước BG66 Ultimax bên shop còn hàng nhé!',
+            timestamp: DateTime.now(),
+            isFromUser: false,
+          ),
+        ],
+      );
+
+      // Thêm cuộc trò chuyện 2 có 2 tin nhắn chưa đọc
+      final thread2 = ChatThread(
+        id: 'thread_user1_shop2',
+        userId: 'user1',
+        shopId: 'shop2',
+        shopName: 'VNB Sports Quận 10',
+        shopAvatar: '',
+        lastMessage: 'Vợt của bạn đã căng xong 28 lbs rồi ạ',
+        lastMessageTime: DateTime.now(),
+        unreadCount: 2,
+        messages: [],
+      );
+
+      // Lưu vào cache để provider nạp
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        'gearsports_chat_threads_user1',
+        jsonEncode([thread1.toMap(), thread2.toMap()]),
+      );
+
+      // Đồng bộ theo user1 (vai trò người chơi)
+      await chatProv.syncForUser('user1', role: UserRole.player);
+
+      // Tổng số tin nhắn chưa đọc phải là 1 + 2 = 3
+      expect(chatProv.unreadMessagesCount, equals(3));
+
+      // Đánh dấu đọc cuộc trò chuyện 1 -> unreadCount của thread1 về 0, tổng giảm còn 2
+      chatProv.markThreadAsRead(thread1.id);
+      expect(chatProv.getThread(thread1.id)?.unreadCount, equals(0));
+      expect(chatProv.unreadMessagesCount, equals(2));
+
+      // Đánh dấu đọc cuộc trò chuyện 2 -> tổng về 0 (huy hiệu tin nhắn biến mất)
+      chatProv.markThreadAsRead(thread2.id);
+      expect(chatProv.getThread(thread2.id)?.unreadCount, equals(0));
+      expect(chatProv.unreadMessagesCount, equals(0));
+    });
+
+    test('Kiểm tra AdminProvider cập nhật trạng thái VIP tức thì cho Player (updateUserVipStatus)', () async {
+      SharedPreferences.setMockInitialValues({});
+      final adminProv = AdminProvider();
+
+      final player = UserModel(
+        uid: 'player_test_01',
+        email: 'player01@gearsports.com',
+        fullName: 'Nguyễn Văn Cầu Lông',
+        phone: '0901234567',
+        role: UserRole.player,
+        createdAt: DateTime.now(),
+        isVip: false,
+        vipExpiresAt: null,
+      );
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        'gearsports_local_users',
+        jsonEncode({
+          player.email.toLowerCase(): {
+            'password': 'password123',
+            'user': player.toMap(),
+          }
+        }),
+      );
+
+      await adminProv.refreshAdminData();
+      expect(adminProv.users.length, equals(1));
+      final userBefore = adminProv.users.first;
+      expect(userBefore.isVip, isFalse);
+      expect(userBefore.isVipActive, isFalse);
+      expect(userBefore.vipDaysRemaining, equals(0));
+
+      // Admin cấp VIP 30 ngày cho Player
+      final expiresAt = DateTime.now().add(const Duration(days: 30));
+      await adminProv.updateUserVipStatus(
+        uid: player.uid,
+        isVip: true,
+        vipExpiresAt: expiresAt,
+      );
+
+      // UI Admin phản ánh ngay lập tức trong RAM mà không cần tải lại
+      final userAfter = adminProv.users.first;
+      expect(userAfter.isVip, isTrue);
+      expect(userAfter.isVipActive, isTrue);
+      expect(userAfter.vipDaysRemaining, greaterThanOrEqualTo(29));
+      expect(userAfter.vipExpiresAt, isNotNull);
+
+      // Đồng thời đồng bộ xuống Local Storage SharedPreferences
+      final rawUpdated = prefs.getString('gearsports_local_users');
+      expect(rawUpdated, isNotNull);
+      final decoded = jsonDecode(rawUpdated!) as Map<String, dynamic>;
+      final storedUser = decoded[player.email.toLowerCase()]['user'] as Map<String, dynamic>;
+      expect(storedUser['isVip'], isTrue);
+    });
+
+    test('Kiểm tra duyệt shop tự động: sản phẩm đã bị từ chối trước đó thì không được duyệt theo khi shop được duyệt', () async {
+      SharedPreferences.setMockInitialValues({});
+      final shopProv = ShopProvider();
+
+      // Giả lập Shop A đang chờ duyệt (status: 'pending')
+      final shopA = Shop(
+        id: 'shop_a',
+        name: 'Shop Cầu Lông Minh Sport',
+        address: '123 Đường Cầu Lông, Quận 10',
+        district: 'Quận 10',
+        city: 'TP. Hồ Chí Minh',
+        latitude: 10.7769,
+        longitude: 106.7009,
+        rating: 5.0,
+        reviewCount: 0,
+        machineModel: 'Yonex 9.0',
+        stringerCert: 'Master Stringer',
+        phone: '0912345678',
+        openHours: '08:00 - 21:30',
+        imageUrl: '',
+        ownerUid: 'owner_a',
+        status: 'pending',
+      );
+      await shopProv.upsertShop(shopA);
+
+      // Shop A có 2 sản phẩm: Sản phẩm 1 (cước giả) và Sản phẩm 2 (vợt chính hãng)
+      final prod1 = Product(
+        id: 'p1',
+        shopId: 'shop_a',
+        shopName: 'Shop Cầu Lông Minh Sport',
+        name: 'Cước BG66 Không Rõ Nguồn Gốc',
+        category: ProductCategory.string,
+        price: 50000,
+        description: 'Hàng xách tay',
+        imageUrl: '',
+        status: 'pending',
+      );
+
+      final prod2 = Product(
+        id: 'p2',
+        shopId: 'shop_a',
+        shopName: 'Shop Cầu Lông Minh Sport',
+        name: 'Vợt Yonex Nanoflare 800 Chính Hãng',
+        category: ProductCategory.racket,
+        price: 3200000,
+        description: 'Bảo hành 12 tháng',
+        imageUrl: '',
+        status: 'pending',
+      );
+
+      await shopProv.upsertProduct(prod1);
+      await shopProv.upsertProduct(prod2);
+
+      // Admin kiểm duyệt và TỪ CHỐI duyệt Sản phẩm 1
+      await shopProv.updateProductStatus(prod1, 'rejected');
+
+      final itemsBeforeShopApproval = shopProv.getDirectProductsForShop('shop_a');
+      final p1Before = itemsBeforeShopApproval.firstWhere((p) => p.id == 'p1');
+      final p2Before = itemsBeforeShopApproval.firstWhere((p) => p.id == 'p2');
+      expect(p1Before.isRejected, isTrue);
+      expect(p2Before.isPending, isTrue);
+
+      // Khi shop chưa được duyệt, danh mục Người chơi không thấy sản phẩm nào
+      expect(shopProv.getProductsForShop('shop_a'), isEmpty);
+
+      // Bây giờ Admin PHÊ DUYỆT Shop A
+      await shopProv.updateShopStatus(shopA, 'approved');
+
+      // 1. Shop A phải được duyệt thành công
+      expect(shopProv.getShopById('shop_a')?.isApproved, isTrue);
+
+      // 2. Sản phẩm 2 (không bị từ chối) được duyệt tự động theo shop
+      final itemsAfterShopApproval = shopProv.getDirectProductsForShop('shop_a');
+      final p2After = itemsAfterShopApproval.firstWhere((p) => p.id == 'p2');
+      expect(p2After.isApproved, isTrue);
+      expect(p2After.status, equals('approved'));
+
+      // 3. Sản phẩm 1 (trước đó đã bị từ chối) TUYỆT ĐỐI KHÔNG được duyệt theo
+      final p1After = itemsAfterShopApproval.firstWhere((p) => p.id == 'p1');
+      expect(p1After.isApproved, isFalse);
+      expect(p1After.isRejected, isTrue);
+      expect(p1After.status, equals('rejected'));
+
+      // 4. Danh mục Người chơi thấy Sản phẩm 2, nhưng KHÔNG thấy Sản phẩm 1
+      final playerViewProducts = shopProv.getProductsForShop('shop_a');
+      expect(playerViewProducts.any((p) => p.id == 'p2'), isTrue);
+      expect(playerViewProducts.any((p) => p.id == 'p1'), isFalse);
+    });
+
+    test('Kiểm tra thông báo cho Chủ Shop: Nhận thông báo bảo trì, nâng cấp hệ thống từ Admin', () async {
+      SharedPreferences.setMockInitialValues({});
+      final notifProv = NotificationProvider();
+
+      // Giả lập Chủ Shop đăng nhập với uid 'shop_owner_01'
+      await notifProv.syncForUser('shop_owner_01');
+      expect(notifProv.unreadCount, equals(0));
+      expect(notifProv.notifications, isEmpty);
+
+      // 1. Admin phát thông báo bảo trì & nâng cấp hệ thống
+      await notifProv.broadcastSystemNotification(
+        title: '🛠️ Thông Báo Bảo Trì & Nâng Cấp Hệ Thống',
+        message: 'Hệ thống Gear Sports sẽ bảo trì máy chủ từ 00:00 - 02:00 ngày mai. Quý cửa hàng vui lòng lưu ý.',
+        type: NotificationType.systemAlert,
+      );
+
+      // Chủ shop nhận được thông báo ngay lập tức, số chấm đỏ tăng lên 1
+      expect(notifProv.unreadCount, equals(1));
+      expect(notifProv.notifications.length, equals(1));
+
+      final maintenanceNotif = notifProv.notifications.first;
+      expect(maintenanceNotif.type, equals(NotificationType.systemAlert));
+      expect(maintenanceNotif.isMaintenanceOrUpgrade, isTrue);
+      expect(maintenanceNotif.isRead, isFalse);
+      expect(notifProv.latestMaintenanceAlert?.id, equals(maintenanceNotif.id));
+
+      // 2. Admin phát tiếp thông báo hướng dẫn quy chế đối tác Shop
+      await notifProv.broadcastSystemNotification(
+        title: '📢 Hướng dẫn duyệt sản phẩm dành cho Chủ Shop',
+        message: 'Các chủ shop vui lòng hoàn tất thông tin chứng chỉ và hình ảnh vợt trưng bày.',
+        type: NotificationType.shopNotice,
+      );
+
+      // Số thông báo chưa đọc tăng lên 2
+      expect(notifProv.unreadCount, equals(2));
+      expect(notifProv.shopNotifs.length, equals(1));
+      expect(notifProv.systemAlerts.length, equals(1));
+
+      // 3. Chủ shop đọc thông báo bảo trì -> Số chưa đọc giảm còn 1
+      await notifProv.markAsRead(maintenanceNotif.id);
+      expect(notifProv.unreadCount, equals(1));
+      expect(notifProv.notifications.firstWhere((n) => n.id == maintenanceNotif.id).isRead, isTrue);
+
+      // 4. Chủ shop bấm "Đã đọc tất cả" -> Số chưa đọc về 0
+      await notifProv.markAllAsRead();
+      expect(notifProv.unreadCount, equals(0));
     });
   });
 }

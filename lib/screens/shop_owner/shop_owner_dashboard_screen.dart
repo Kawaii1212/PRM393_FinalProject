@@ -9,10 +9,12 @@ import '../../models/user_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/shop_provider.dart';
 import '../../providers/chat_provider.dart';
+import '../../providers/notification_provider.dart';
 import '../../theme/app_theme.dart';
 import '../chat/chat_screen.dart';
 import '../auth/login_register_screen.dart';
 import '../subscription/shop_subscription_dialog.dart';
+import 'shop_owner_notifications_screen.dart';
 
 class ShopOwnerDashboardScreen extends StatefulWidget {
   const ShopOwnerDashboardScreen({super.key});
@@ -34,6 +36,7 @@ class _ShopOwnerDashboardScreenState extends State<ShopOwnerDashboardScreen> {
     final authProvider = context.watch<AuthProvider>();
     final shopProvider = context.watch<ShopProvider>();
     final chatProvider = context.watch<ChatProvider>();
+    final notifProvider = context.watch<NotificationProvider>();
     final currentUser = authProvider.currentUser;
 
     if (currentUser == null) {
@@ -47,6 +50,7 @@ class _ShopOwnerDashboardScreenState extends State<ShopOwnerDashboardScreen> {
       _buildOverviewTab(context, currentUser, myShop, shopThreads.length),
       _buildProductsTab(context, myShop),
       _buildChatTab(context, myShop, shopThreads),
+      const ShopOwnerNotificationsScreen(isTab: true),
       _buildAccountTab(context, currentUser, myShop),
     ];
 
@@ -93,6 +97,36 @@ class _ShopOwnerDashboardScreenState extends State<ShopOwnerDashboardScreen> {
           ],
         ),
         actions: [
+          IconButton(
+            tooltip: 'Thông báo từ Admin',
+            icon: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                const Icon(Icons.notifications_outlined, color: AppTheme.primary, size: 24),
+                if (notifProvider.unreadCount > 0)
+                  Positioned(
+                    right: -2,
+                    top: -2,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                      decoration: const BoxDecoration(
+                        color: AppTheme.danger,
+                        shape: BoxShape.circle,
+                      ),
+                      constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                      alignment: Alignment.center,
+                      child: Text(
+                        '${notifProvider.unreadCount > 99 ? '99+' : notifProvider.unreadCount}',
+                        style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            onPressed: () {
+              setState(() => _currentTabIndex = 3);
+            },
+          ),
           IconButton(
             tooltip: 'Làm mới dữ liệu',
             icon: const Icon(Icons.refresh_rounded, color: AppTheme.primary),
@@ -141,27 +175,81 @@ class _ShopOwnerDashboardScreenState extends State<ShopOwnerDashboardScreen> {
           ),
           BottomNavigationBarItem(
             icon: Stack(
+              clipBehavior: Clip.none,
               children: [
                 const Icon(Icons.chat_bubble_rounded),
                 if (chatProvider.unreadMessagesCount > 0)
                   Positioned(
-                    right: 0,
-                    top: 0,
+                    right: -3,
+                    top: -3,
                     child: Container(
-                      padding: const EdgeInsets.all(3),
+                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                       decoration: const BoxDecoration(
-                        color: AppTheme.primary,
+                        color: AppTheme.danger,
                         shape: BoxShape.circle,
                       ),
+                      constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                      alignment: Alignment.center,
                       child: Text(
-                        '${chatProvider.unreadMessagesCount}',
-                        style: const TextStyle(color: Colors.black, fontSize: 9, fontWeight: FontWeight.bold),
+                        '${chatProvider.unreadMessagesCount > 99 ? '99+' : chatProvider.unreadMessagesCount}',
+                        style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
                       ),
                     ),
                   ),
               ],
             ),
             label: 'Tin nhắn',
+          ),
+          BottomNavigationBarItem(
+            icon: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                const Icon(Icons.notifications_none_rounded),
+                if (notifProvider.unreadCount > 0)
+                  Positioned(
+                    right: -3,
+                    top: -3,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                      decoration: const BoxDecoration(
+                        color: AppTheme.danger,
+                        shape: BoxShape.circle,
+                      ),
+                      constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                      alignment: Alignment.center,
+                      child: Text(
+                        '${notifProvider.unreadCount > 99 ? '99+' : notifProvider.unreadCount}',
+                        style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            activeIcon: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                const Icon(Icons.notifications_rounded, color: AppTheme.primary),
+                if (notifProvider.unreadCount > 0)
+                  Positioned(
+                    right: -3,
+                    top: -3,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                      decoration: const BoxDecoration(
+                        color: AppTheme.danger,
+                        shape: BoxShape.circle,
+                      ),
+                      constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                      alignment: Alignment.center,
+                      child: Text(
+                        '${notifProvider.unreadCount > 99 ? '99+' : notifProvider.unreadCount}',
+                        style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            label: 'Thông báo',
           ),
           const BottomNavigationBarItem(
             icon: Icon(Icons.person_rounded),
@@ -185,6 +273,7 @@ class _ShopOwnerDashboardScreenState extends State<ShopOwnerDashboardScreen> {
     if (shop == null) return const SizedBox.shrink();
 
     final shopProvider = context.watch<ShopProvider>();
+    final notifProvider = context.watch<NotificationProvider>();
     final myProducts = shopProvider.getDirectProductsForShop(shop.id);
     final approvedProductsCount = myProducts.where((p) => p.isApproved).length;
     final pendingProductsCount = myProducts.where((p) => p.isPending).length;
@@ -199,6 +288,12 @@ class _ShopOwnerDashboardScreenState extends State<ShopOwnerDashboardScreen> {
           // Thẻ Trạng Thái Gói Dịch Vụ / Dùng Thử Miễn Phí
           _buildShopSubscriptionCard(context, shop),
           const SizedBox(height: 14),
+
+          // Banner Thông Báo Quan Trọng Từ Admin (Bảo trì / Nâng cấp / Tin tức)
+          if (notifProvider.notifications.isNotEmpty) ...[
+            _buildAdminAnnouncementBanner(context, notifProvider),
+            const SizedBox(height: 14),
+          ],
 
           // Banner trạng thái kiểm duyệt bởi Admin
           _buildShopStatusBanner(shop),
@@ -427,6 +522,95 @@ class _ShopOwnerDashboardScreenState extends State<ShopOwnerDashboardScreen> {
                 ),
               ],
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAdminAnnouncementBanner(BuildContext context, NotificationProvider notifProv) {
+    final alert = notifProv.latestMaintenanceAlert ??
+        (notifProv.notifications.isNotEmpty ? notifProv.notifications.first : null);
+    if (alert == null) return const SizedBox.shrink();
+
+    final isMaintenance = alert.isMaintenanceOrUpgrade;
+    final color = isMaintenance ? Colors.orangeAccent : AppTheme.primary;
+    final icon = isMaintenance ? Icons.build_circle_rounded : Icons.campaign_rounded;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withOpacity(0.5), width: 1.2),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.2),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, color: color, size: 20),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      isMaintenance ? 'Thông Báo Bảo Trì / Nâng Cấp Hệ Thống' : 'Thông Báo Mới Từ Admin',
+                      style: TextStyle(
+                        color: color,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    if (notifProv.unreadCount > 0)
+                      Text(
+                        'Bạn có ${notifProv.unreadCount} thông báo chưa đọc',
+                        style: const TextStyle(color: AppTheme.textMuted, fontSize: 11),
+                      ),
+                  ],
+                ),
+              ),
+              TextButton(
+                onPressed: () {
+                  setState(() => _currentTabIndex = 3);
+                },
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: Row(
+                  children: [
+                    Text('Xem tất cả', style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.bold)),
+                    Icon(Icons.chevron_right_rounded, size: 16, color: color),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            alert.title,
+            style: const TextStyle(
+              color: AppTheme.textPrimary,
+              fontWeight: FontWeight.bold,
+              fontSize: 13.5,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            alert.message,
+            style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12, height: 1.35),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),
@@ -946,6 +1130,23 @@ class _ShopOwnerDashboardScreenState extends State<ShopOwnerDashboardScreen> {
                             ],
                           ),
                         ),
+                        if (t.unreadCount > 0)
+                          Container(
+                            margin: const EdgeInsets.only(right: 6),
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                            decoration: const BoxDecoration(
+                              color: AppTheme.danger,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Text(
+                              '${t.unreadCount}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
                         const Icon(Icons.chevron_right_rounded, color: AppTheme.textMuted),
                       ],
                     ),
@@ -960,6 +1161,7 @@ class _ShopOwnerDashboardScreenState extends State<ShopOwnerDashboardScreen> {
   // TAB 4: TÀI KHOẢN & CÀI ĐẶT (ACCOUNT)
   // ==========================================
   Widget _buildAccountTab(BuildContext context, UserModel user, Shop? shop) {
+    final notifProvider = context.watch<NotificationProvider>();
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -1003,6 +1205,27 @@ class _ShopOwnerDashboardScreenState extends State<ShopOwnerDashboardScreen> {
         const SizedBox(height: 20),
 
         // Cài đặt & Thông tin
+        _settingTile(
+          icon: Icons.campaign_rounded,
+          title: 'Thông Báo Từ Hệ Thống Admin',
+          subtitle: notifProvider.unreadCount > 0
+              ? '${notifProvider.unreadCount} thông báo mới chưa đọc'
+              : 'Xem lịch bảo trì, nâng cấp & chính sách',
+          trailing: notifProvider.unreadCount > 0
+              ? Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: AppTheme.danger,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    '${notifProvider.unreadCount}',
+                    style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                  ),
+                )
+              : null,
+          onTap: () => setState(() => _currentTabIndex = 3),
+        ),
         _settingTile(
           icon: Icons.workspace_premium_rounded,
           title: 'Gói Dịch Vụ Cửa Hàng',
@@ -1077,6 +1300,7 @@ class _ShopOwnerDashboardScreenState extends State<ShopOwnerDashboardScreen> {
     required String title,
     required String subtitle,
     required VoidCallback? onTap,
+    Widget? trailing,
   }) {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -1085,12 +1309,16 @@ class _ShopOwnerDashboardScreenState extends State<ShopOwnerDashboardScreen> {
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AppTheme.border),
       ),
-      child: ListTile(
-        leading: Icon(icon, color: AppTheme.primary),
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-        subtitle: Text(subtitle, style: const TextStyle(color: AppTheme.textMuted, fontSize: 11.5)),
-        trailing: const Icon(Icons.chevron_right_rounded, color: AppTheme.textMuted),
-        onTap: onTap,
+      child: Material(
+        color: Colors.transparent,
+        child: ListTile(
+          leading: Icon(icon, color: AppTheme.primary),
+          title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+          subtitle: Text(subtitle, style: const TextStyle(color: AppTheme.textMuted, fontSize: 11.5)),
+          trailing: trailing ?? const Icon(Icons.chevron_right_rounded, color: AppTheme.textMuted),
+          onTap: onTap,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        ),
       ),
     );
   }

@@ -137,52 +137,104 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           ),
           BottomNavigationBarItem(
             icon: Stack(
+              clipBehavior: Clip.none,
               children: [
                 const Icon(Icons.chat_bubble_outline_rounded),
                 if (chatProvider.unreadMessagesCount > 0)
                   Positioned(
-                    right: 0,
-                    top: 0,
+                    right: -3,
+                    top: -3,
                     child: Container(
-                      padding: const EdgeInsets.all(3),
+                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                       decoration: const BoxDecoration(
                         color: AppTheme.primary,
                         shape: BoxShape.circle,
                       ),
+                      constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                      alignment: Alignment.center,
                       child: Text(
-                        '${chatProvider.unreadMessagesCount}',
+                        '${chatProvider.unreadMessagesCount > 99 ? '99+' : chatProvider.unreadMessagesCount}',
                         style: const TextStyle(color: Colors.black, fontSize: 9, fontWeight: FontWeight.bold),
                       ),
                     ),
                   ),
               ],
             ),
-            activeIcon: const Icon(Icons.chat_bubble_rounded, color: AppTheme.primary),
+            activeIcon: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                const Icon(Icons.chat_bubble_rounded, color: AppTheme.primary),
+                if (chatProvider.unreadMessagesCount > 0)
+                  Positioned(
+                    right: -3,
+                    top: -3,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                      decoration: const BoxDecoration(
+                        color: AppTheme.primary,
+                        shape: BoxShape.circle,
+                      ),
+                      constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                      alignment: Alignment.center,
+                      child: Text(
+                        '${chatProvider.unreadMessagesCount > 99 ? '99+' : chatProvider.unreadMessagesCount}',
+                        style: const TextStyle(color: Colors.black, fontSize: 9, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
             label: 'Tin Nhắn',
           ),
           BottomNavigationBarItem(
             icon: Stack(
+              clipBehavior: Clip.none,
               children: [
                 const Icon(Icons.notifications_none_rounded),
                 if (notifProvider.unreadCount > 0)
                   Positioned(
-                    right: 0,
-                    top: 0,
+                    right: -3,
+                    top: -3,
                     child: Container(
-                      padding: const EdgeInsets.all(3),
+                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                       decoration: const BoxDecoration(
                         color: AppTheme.danger,
                         shape: BoxShape.circle,
                       ),
+                      constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                      alignment: Alignment.center,
                       child: Text(
-                        '${notifProvider.unreadCount}',
+                        '${notifProvider.unreadCount > 99 ? '99+' : notifProvider.unreadCount}',
                         style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
                       ),
                     ),
                   ),
               ],
             ),
-            activeIcon: const Icon(Icons.notifications_rounded, color: AppTheme.primary),
+            activeIcon: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                const Icon(Icons.notifications_rounded, color: AppTheme.primary),
+                if (notifProvider.unreadCount > 0)
+                  Positioned(
+                    right: -3,
+                    top: -3,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                      decoration: const BoxDecoration(
+                        color: AppTheme.danger,
+                        shape: BoxShape.circle,
+                      ),
+                      constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                      alignment: Alignment.center,
+                      child: Text(
+                        '${notifProvider.unreadCount > 99 ? '99+' : notifProvider.unreadCount}',
+                        style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
             label: 'Thông Báo',
           ),
         ],
