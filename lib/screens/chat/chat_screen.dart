@@ -934,12 +934,12 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
         authUser?.role == UserRole.stringer ||
         (authUser != null && (thread?.shopOwnerUid == authUser.uid || thread?.shopId == authUser.uid));
 
-    // BẮT BUỘC: CHỈ CHO PHÉP NHẮN VỚI SHOP ĐỐI TÁC ĐÃ ĐƯỢC ADMIN PHÊ DUYỆT TRÊN APP (isVerifiedPartner)
-    if (!isShop && authUser?.role != UserRole.admin && (shop == null || !shop.isVerifiedPartner)) {
+    // BẮT BUỘC: CHỈ CHẶN KHI SHOP ĐANG BỊ ADMIN TẠM DỪNG / VÔ HIỆU HÓA
+    if (!isShop && authUser?.role != UserRole.admin && (shop != null && shop.isDisabled)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Không thể gửi tin nhắn! Cửa hàng này chưa được Admin phê duyệt tài khoản đối tác trên ứng dụng.',
+            'Không thể gửi tin nhắn! Cửa hàng này hiện đang tạm dừng hoạt động.',
           ),
           backgroundColor: AppTheme.danger,
         ),
@@ -1095,6 +1095,7 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
 
     final targetShopId = widget.shopId ?? thread.shopId;
     final shop = shopProvider.getShopById(targetShopId);
+    final bool isShopDisabled = (shop != null && shop.isDisabled);
     // BẮT BUỘC: CHỈ ĐƯỢC COI LÀ HỢP LỆ KHI ĐƯỢC XÁC THỰC LÀ SHOP ĐỐI TÁC TRÊN APP (isVerifiedPartner)
     final bool isShopApproved = (shop != null && shop.isVerifiedPartner);
 
@@ -1240,8 +1241,7 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
       body: Column(
         children: [
           // Banner đầu trang cuộc trò chuyện:
-          // - Phía Chủ Shop: Hiển thị thông tin khách hàng, KHÔNG có nút/chức năng báo cáo
-          // - Phía Người chơi: Hiển thị chứng nhận shop đối tác và nút báo cáo vi phạm
+          // - Phía Chủ Shop: Hiển thị thông tin khách hàng
           if (isShop)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
@@ -1265,24 +1265,6 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
                   ),
                 ],
               ),
-            )
-
-          else
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              color: AppTheme.danger.withOpacity(0.12),
-              child: const Row(
-                children: [
-                  Icon(Icons.warning_amber_rounded, color: AppTheme.danger, size: 16),
-                  SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Khóa tin nhắn: Cửa hàng chưa được Admin phê duyệt hoạt động. Bạn chỉ có thể trò chuyện với các shop đối tác chính thức.',
-                      style: TextStyle(fontSize: 11, color: AppTheme.danger, fontWeight: FontWeight.w600),
-                    ),
-                  ),
-                ],
-              ),
             ),
 
           // Message List
@@ -1298,8 +1280,8 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
             ),
           ),
 
-          // Quick Prompt Suggestions (only if shop is approved)
-          if (isShopApproved)
+          // Quick Prompt Suggestions (nếu shop không bị vô hiệu hóa)
+          if (!isShopDisabled)
             Container(
               height: 38,
               margin: const EdgeInsets.only(bottom: 6),
@@ -1339,7 +1321,7 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
               border: Border(top: BorderSide(color: AppTheme.border)),
             ),
             child: SafeArea(
-              child: isShopApproved
+              child: !isShopDisabled
                   ? Row(
                       children: [
                         Expanded(
@@ -1388,7 +1370,7 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
                       ),
                       child: const Center(
                         child: Text(
-                          'Khóa nhắn tin: Cửa hàng này chưa được phê duyệt hoạt động trên ứng dụng.',
+                          'Khóa nhắn tin: Cửa hàng này hiện đang tạm dừng hoạt động trên ứng dụng.',
                           textAlign: TextAlign.center,
                           style: TextStyle(color: AppTheme.danger, fontSize: 11.5, fontWeight: FontWeight.w600),
                         ),

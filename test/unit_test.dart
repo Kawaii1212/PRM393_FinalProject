@@ -207,12 +207,12 @@ void main() {
         userId: 'player_crh93',
       );
 
-      // Định dạng mã phải có tiền tố 'GS VIP CRH93' và kèm theo mã phiên 8 chữ số
-      expect(codeA, startsWith('GS VIP CRH93'));
+      // Định dạng mã rút gọn: 'VIP RH93' và kèm theo mã phiên ngẫu nhiên 8 chữ số
+      expect(codeA, startsWith('VIP RH93'));
       final partsA = codeA.split(' ');
-      expect(partsA.length, equals(4));
-      expect(int.tryParse(partsA[3]), isNotNull);
-      expect(partsA[3].length, equals(8));
+      expect(partsA.length, equals(3));
+      expect(int.tryParse(partsA[2]), isNotNull);
+      expect(partsA[2].length, equals(8));
 
       // Mô phỏng chống dùng lại giao dịch (Replay Attack Prevention)
       final usedIds = <String>{'6cccf169-d50f-11f1-8895-0afffe87053b'};
