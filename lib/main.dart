@@ -11,6 +11,7 @@ import 'providers/chat_provider.dart';
 import 'providers/notification_provider.dart';
 import 'providers/injury_provider.dart';
 import 'providers/subscription_provider.dart';
+import 'services/sepay_service.dart';
 import 'screens/auth/splash_screen.dart';
 
 Future<void> main() async {
@@ -19,6 +20,8 @@ Future<void> main() async {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
+    // Tự động khởi tạo và đồng bộ cấu hình SePAY lên Cloud Firestore
+    SepayService.autoBootstrapFirestore();
   } catch (e) {
     debugPrint('Firebase initialization warning: $e');
   }

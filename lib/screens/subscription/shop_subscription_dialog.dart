@@ -103,7 +103,7 @@ class _ShopSubscriptionDialogState extends State<ShopSubscriptionDialog> {
   void _initPaymentDetails() {
     _sessionStartTime = DateTime.now();
     _transferContent = VietQrConfig.generateTransferContent(
-      prefix: 'GS SHOP',
+      prefix: 'SHOP',
       userId: widget.shop.id,
     );
     _qrImageUrl = VietQrConfig.generateQrImageUrl(
@@ -261,40 +261,58 @@ class _ShopSubscriptionDialogState extends State<ShopSubscriptionDialog> {
         setState(() {
           _isProcessing = false;
           if (success) {
+            // Đánh dấu giao dịch đã dùng sau khi đã cập nhật thành công vào Firestore
+            if (result.transactionId != null && result.transactionId!.isNotEmpty) {
+              SepayService.markTransactionAsUsed(result.transactionId!);
+            }
             _countdownTimer?.cancel();
             _isRestoredSession = false;
             SepayService.clearPendingSession(widget.shop.id);
             _currentStep = 2; // Chuyển sang màn hình thành công
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Hệ thống đã nhận được tiền nhưng gặp gián đoạn kết nối khi kích hoạt gói Shop. Vui lòng bấm "Kiểm tra lại"!'),
+                backgroundColor: AppTheme.warning,
+                behavior: SnackBarBehavior.floating,
+                duration: Duration(seconds: 4),
+              ),
+            );
           }
         });
       } else {
-        // Chưa có tiền vào hoặc chủ shop bấm khi chưa chuyển
+        // Chưa có tiền vào hoặc chủ shop bấm khi chưa chuyển / lỗi cấu hình
         setState(() => _isChecking = false);
-        _showNotReceivedAlert();
+        _showNotReceivedAlert(message: result.message);
       }
     } catch (e) {
       debugPrint('Check shop payment error: $e');
       if (mounted) {
         setState(() => _isChecking = false);
-        _showNotReceivedAlert();
+        _showNotReceivedAlert(message: 'Lỗi kiểm tra giao dịch: $e');
       }
     }
   }
 
-  /// Thông báo rõ ràng cho chủ shop khi chưa có giao dịch
-  void _showNotReceivedAlert() {
+  /// Thông báo rõ ràng cho chủ shop khi chưa có giao dịch hoặc có lỗi cấu hình
+  void _showNotReceivedAlert({String? message}) {
+    final isConfigError = message != null && (message.contains('Token') || message.contains('cấu hình'));
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppTheme.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.info_outline_rounded, color: AppTheme.warning, size: 22),
-            SizedBox(width: 8),
+            Icon(
+              isConfigError ? Icons.warning_amber_rounded : Icons.info_outline_rounded,
+              color: isConfigError ? AppTheme.danger : AppTheme.warning,
+              size: 22,
+            ),
+            const SizedBox(width: 8),
             Text(
-              'Chưa ghi nhận thanh toán',
-              style: TextStyle(
+              isConfigError ? 'Lỗi Cấu Hình Cổng Thanh Toán' : 'Chưa ghi nhận thanh toán',
+              style: const TextStyle(
                 color: AppTheme.textPrimary,
                 fontSize: 16,
                 fontWeight: FontWeight.bold,
@@ -306,31 +324,43 @@ class _ShopSubscriptionDialogState extends State<ShopSubscriptionDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Hệ thống chưa tìm thấy giao dịch chuyển khoản cho nội dung: "$_transferContent" với số tiền ${currencyFormat.format(_selectedPlan.priceVnd)} vào STK 0949614588.',
-              style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13, height: 1.4),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: AppTheme.surfaceLight,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: AppTheme.border),
+            if (isConfigError) ...[
+              Text(
+                message,
+                style: const TextStyle(color: AppTheme.danger, fontSize: 13, height: 1.4),
               ),
-              child: const Row(
-                children: [
-                  Icon(Icons.lightbulb_outline_rounded, color: AppTheme.primary, size: 18),
-                  SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Nếu bạn vừa chuyển khoản, vui lòng đợi vài giây để ngân hàng xử lý rồi bấm kiểm tra lại!',
-                      style: TextStyle(color: AppTheme.textMuted, fontSize: 11),
+              const SizedBox(height: 10),
+              const Text(
+                'Vui lòng thông báo cho Quản trị viên để kiểm tra lại cấu hình SePAY API Token.',
+                style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+              ),
+            ] else ...[
+              Text(
+                'Hệ thống chưa tìm thấy giao dịch chuyển khoản cho nội dung: "$_transferContent" với số tiền ${currencyFormat.format(_selectedPlan.priceVnd)} vào STK 0949614588.',
+                style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13, height: 1.4),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppTheme.surfaceLight,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppTheme.border),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.lightbulb_outline_rounded, color: AppTheme.primary, size: 18),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Nếu bạn vừa chuyển khoản liên ngân hàng, vui lòng đợi 15-30 giây để ngân hàng xử lý sao kê rồi bấm kiểm tra lại!',
+                        style: TextStyle(color: AppTheme.textMuted, fontSize: 11),
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
+            ],
             if (_isExpired) ...[
               const SizedBox(height: 10),
               Container(

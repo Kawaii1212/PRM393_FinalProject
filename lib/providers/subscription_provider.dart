@@ -159,7 +159,7 @@ class SubscriptionProvider with ChangeNotifier {
       final txId = customTxId ?? 'TX_VIP_${now.millisecondsSinceEpoch}';
       final transferCode = customTransferCode ??
           VietQrConfig.generateTransferContent(
-            prefix: 'GS VIP',
+            prefix: 'VIP',
             userId: user.uid,
           );
 
@@ -239,7 +239,7 @@ class SubscriptionProvider with ChangeNotifier {
       final txId = customTxId ?? 'TX_SHOP_${now.millisecondsSinceEpoch}';
       final transferCode = customTransferCode ??
           VietQrConfig.generateTransferContent(
-            prefix: 'GS SHOP',
+            prefix: 'SHOP',
             userId: shop.id,
           );
 
