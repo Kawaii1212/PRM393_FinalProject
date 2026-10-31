@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../models/user_model.dart';
 import '../../models/shop_model.dart';
+import '../../providers/auth_provider.dart';
 import '../../providers/admin_provider.dart';
 import '../../providers/shop_provider.dart';
 import '../../providers/subscription_provider.dart';
@@ -854,6 +855,27 @@ class _AdminSubscriptionsTabState extends State<AdminSubscriptionsTab> {
               'Nhập SePAY API Token lấy từ https://my.sepay.vn để hệ thống tự động xác nhận khi có tiền vào MBBank (0949614588):',
               style: TextStyle(color: AppTheme.textSecondary, fontSize: 12, height: 1.4),
             ),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppTheme.surfaceLight,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppTheme.border),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.cloud_sync_rounded, color: AppTheme.accent, size: 18),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Token sẽ được đồng bộ lên Cloud Firestore để toàn bộ ứng dụng của Hội viên và Cửa hàng tự động nhận cấu hình mới.',
+                      style: TextStyle(color: AppTheme.textMuted, fontSize: 11, height: 1.3),
+                    ),
+                  ),
+                ],
+              ),
+            ),
             const SizedBox(height: 12),
             TextField(
               controller: textController,
@@ -875,20 +897,49 @@ class _AdminSubscriptionsTabState extends State<AdminSubscriptionsTab> {
           ),
           ElevatedButton(
             onPressed: () async {
+              final authProv = context.read<AuthProvider>();
+              final adminUser = authProv.currentUser;
               final token = textController.text.trim();
+
               if (token.isNotEmpty) {
-                await SepayService.saveApiToken(token);
+                final success = await SepayService.saveApiToken(
+                  token,
+                  updatedBy: adminUser?.email ?? adminUser?.fullName ?? 'admin',
+                );
+                if (ctx.mounted) Navigator.pop(ctx);
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        success
+                            ? 'Đã lưu và đồng bộ SePAY API Token lên Cloud Firestore thành công!'
+                            : 'Đã lưu token cục bộ (Lưu ý: Có lỗi đồng bộ lên Firestore, vui lòng kiểm tra kết nối mạng).',
+                      ),
+                      backgroundColor: success ? AppTheme.accent : AppTheme.warning,
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                }
               } else {
                 await SepayService.clearApiToken();
+                if (ctx.mounted) Navigator.pop(ctx);
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Đã xóa SePAY API Token trên toàn hệ thống!'),
+                      backgroundColor: AppTheme.danger,
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                }
               }
-              if (ctx.mounted) Navigator.pop(ctx);
               setState(() {});
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: AppTheme.primary,
               foregroundColor: Colors.black,
             ),
-            child: const Text('Lưu Token', style: TextStyle(fontWeight: FontWeight.bold)),
+            child: const Text('Lưu & Đồng Bộ', style: TextStyle(fontWeight: FontWeight.bold)),
           ),
         ],
       ),

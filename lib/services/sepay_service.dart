@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -138,8 +139,8 @@ class SepayService {
   static const String primaryApiUrl = 'https://userapi.sepay.vn/v2/transactions';
   static const String fallbackApiUrl = 'https://my.sepay.vn/userapi/transactions/list';
 
-  // API Token chính thức đã kích hoạt từ SePAY của bạn
-  static const String fallbackDefaultToken = 'E9SCA5FNUP1H8EVNZHAKRAC2XKT4YFEJZTD7UJDTGK0PGWQRIXZGDVZMXVSO6WAL';
+  // Fallback Token dự phòng từ biến môi trường lúc compile (KHÔNG gắn cứng token thật trong client binary)
+  static const String fallbackDefaultToken = String.fromEnvironment('SEPAY_TOKEN', defaultValue: '');
 
   static String? _cachedToken;
 
@@ -175,11 +176,42 @@ class SepayService {
     }
   }
 
-  /// Lấy SePAY API Token hiện tại từ cấu hình hoặc SharedPreferences
+  /// Lấy SePAY API Token hiện tại:
+  /// 1. Kiểm tra RAM cache
+  /// 2. Đọc từ Cloud Firestore `system_configs/sepay` (đồng bộ tự động từ Admin tới toàn bộ máy người dùng)
+  /// 3. Fallback đọc từ SharedPreferences cục bộ (khi rớt mạng / offline)
+  /// 4. Fallback biến môi trường compile
   static Future<String> getApiToken() async {
+    // 1. RAM Cache
     if (_cachedToken != null && _cachedToken!.isNotEmpty) {
       return _cachedToken!;
     }
+
+    // 2. Đọc trực tiếp từ Cloud Firestore để nhận cấu hình mới nhất từ Admin
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('system_configs')
+          .doc('sepay')
+          .get()
+          .timeout(const Duration(seconds: 3));
+
+      if (doc.exists && doc.data() != null) {
+        final firestoreToken = (doc.data()!['api_token'] ?? '').toString().trim();
+        if (firestoreToken.isNotEmpty) {
+          _cachedToken = firestoreToken;
+          // Lưu vào SharedPreferences để dùng khi offline
+          try {
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setString(_prefTokenKey, _cachedToken!);
+          } catch (_) {}
+          return _cachedToken!;
+        }
+      }
+    } catch (e) {
+      debugPrint('Lỗi đọc SePAY token từ Cloud Firestore: $e');
+    }
+
+    // 3. Fallback đọc từ SharedPreferences cục bộ
     try {
       final prefs = await SharedPreferences.getInstance();
       final savedToken = prefs.getString(_prefTokenKey);
@@ -188,32 +220,75 @@ class SepayService {
         return _cachedToken!;
       }
     } catch (e) {
-      debugPrint('Lỗi đọc SePAY token từ bộ nhớ: $e');
+      debugPrint('Lỗi đọc SePAY token từ SharedPreferences: $e');
     }
-    return fallbackDefaultToken;
+
+    // 4. Fallback từ biến môi trường
+    if (fallbackDefaultToken.isNotEmpty) {
+      _cachedToken = fallbackDefaultToken;
+      return _cachedToken!;
+    }
+
+    return '';
   }
 
-  /// Lưu SePAY API Token vào SharedPreferences (chỉ dùng bởi Admin)
-  static Future<void> saveApiToken(String token) async {
-    _cachedToken = token.trim();
+  /// Lưu SePAY API Token đồng thời vào Cloud Firestore và SharedPreferences
+  /// (Đảm bảo toàn bộ máy Người chơi và Cửa hàng đều nhận được Token mới ngay lập tức)
+  static Future<bool> saveApiToken(String token, {String? updatedBy}) async {
+    final cleanToken = token.trim();
+    _cachedToken = cleanToken;
+    bool firestoreSuccess = false;
+
+    // 1. Lưu vào SharedPreferences cục bộ
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_prefTokenKey, _cachedToken!);
     } catch (e) {
-      debugPrint('Lỗi lưu SePAY token: $e');
+      debugPrint('Lỗi lưu SePAY token vào prefs: $e');
     }
+
+    // 2. Đồng bộ lên Cloud Firestore (system_configs/sepay)
+    try {
+      await FirebaseFirestore.instance
+          .collection('system_configs')
+          .doc('sepay')
+          .set({
+            'api_token': _cachedToken,
+            'updated_at': FieldValue.serverTimestamp(),
+            'updated_by': updatedBy ?? 'admin',
+          }, SetOptions(merge: true))
+          .timeout(const Duration(seconds: 5));
+      firestoreSuccess = true;
+    } catch (e) {
+      debugPrint('Lỗi đồng bộ SePAY token lên Cloud Firestore: $e');
+    }
+
+    return firestoreSuccess;
   }
 
-  /// Xóa Token (reset về mặc định)
+  /// Xóa SePAY Token trên cả máy cục bộ và Cloud Firestore
   static Future<void> clearApiToken() async {
     _cachedToken = null;
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_prefTokenKey);
     } catch (_) {}
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('system_configs')
+          .doc('sepay')
+          .set({
+            'api_token': '',
+            'updated_at': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true))
+          .timeout(const Duration(seconds: 4));
+    } catch (e) {
+      debugPrint('Lỗi xóa SePAY token trên Cloud Firestore: $e');
+    }
   }
 
-  /// Kiểm tra xem người dùng đã thiết lập Token hay chưa
+  /// Kiểm tra xem hệ thống đã thiết lập Token hợp lệ hay chưa
   static Future<bool> hasConfiguredToken() async {
     final token = await getApiToken();
     return token.isNotEmpty;
