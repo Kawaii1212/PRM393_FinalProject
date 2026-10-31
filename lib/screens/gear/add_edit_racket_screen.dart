@@ -289,19 +289,28 @@ class _AddEditRacketScreenState extends State<AddEditRacketScreen> {
       );
 
       final provider = context.read<RacketProvider>();
+      final notifProvider = context.read<NotificationProvider>();
       if (existing != null) {
         await provider.updateRacket(newRacket);
+        await notifProvider.addNotification(
+          title: '🏸 Đã cập nhật thông số vợt!',
+          message:
+              'Cây vợt $finalBrand ${_modelController.text} đã được cập nhật thành công trong Gara.',
+          type: NotificationType.racketUpdate,
+          targetRacketId: racketId,
+        );
       } else {
         await provider.addRacket(newRacket);
-        if (mounted) {
-          context.read<NotificationProvider>().addNotification(
-            title: '🏸 Đã thêm vợt mới vào Gara!',
-            message:
-                'Cây vợt $finalBrand ${_modelController.text} đã được lưu lên Cloud Firestore.',
-            type: NotificationType.orderStatus,
-            targetRacketId: racketId,
-          );
-        }
+        await notifProvider.addNotification(
+          title: '🏸 Đã thêm vợt mới vào Gara!',
+          message:
+              'Cây vợt $finalBrand ${_modelController.text} đã được thêm thành công vào Gara của bạn.',
+          type: NotificationType.racketUpdate,
+          targetRacketId: racketId,
+        );
+        // Đồng bộ cảnh báo đan cước nếu vợt mới thêm vào có tình trạng cước chùng
+        final allRackets = provider.allRackets;
+        notifProvider.syncRacketTensionAlerts(allRackets);
       }
 
       if (!mounted) return;

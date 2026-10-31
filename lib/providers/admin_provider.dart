@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -194,6 +194,53 @@ class AdminProvider with ChangeNotifier {
       }
     } catch (e) {
       debugPrint('updateUserByAdmin error: $e');
+    }
+  }
+
+  /// Cập nhật trạng thái VIP của người dùng trong RAM và SharedPreferences
+  Future<void> updateUserVipStatus({
+    required String uid,
+    required bool isVip,
+    required DateTime? vipExpiresAt,
+  }) async {
+    final idx = _users.indexWhere((u) => u.uid == uid);
+    if (idx != -1) {
+      final updated = _users[idx].copyWith(
+        isVip: isVip,
+        vipExpiresAt: vipExpiresAt,
+      );
+      _users[idx] = updated;
+      notifyListeners();
+
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final rawLocalUsers = prefs.getString(_prefLocalUsersKey);
+        if (rawLocalUsers != null && rawLocalUsers.isNotEmpty) {
+          final decoded = jsonDecode(rawLocalUsers) as Map<String, dynamic>;
+          final emailKey = updated.email.toLowerCase();
+          if (decoded.containsKey(emailKey)) {
+            final existing = decoded[emailKey] as Map<String, dynamic>;
+            decoded[emailKey] = {
+              'password': existing['password'] ?? '123456',
+              'user': updated.toMap(),
+            };
+            await prefs.setString(_prefLocalUsersKey, jsonEncode(decoded));
+          }
+        }
+
+        if (_isFirebaseReady) {
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(uid)
+              .set({
+                'isVip': isVip,
+                'vipExpiresAt': vipExpiresAt?.toIso8601String(),
+              }, SetOptions(merge: true))
+              .timeout(const Duration(seconds: 5));
+        }
+      } catch (e) {
+        debugPrint('AdminProvider updateUserVipStatus error: $e');
+      }
     }
   }
 

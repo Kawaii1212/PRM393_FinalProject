@@ -9,11 +9,16 @@ import '../models/racket_model.dart';
 class NotificationProvider with ChangeNotifier {
   static const String _prefSystemNotifsKey = 'gearsports_system_notifications';
 
+  String? _currentUserId;
   final List<AppNotification> _notifications = [];
+  bool _isLoading = false;
 
   NotificationProvider() {
     syncSystemNotifications();
   }
+
+  bool get isLoading => _isLoading;
+  String? get currentUserId => _currentUserId;
 
   bool get _isFirebaseReady {
     try {
@@ -23,10 +28,101 @@ class NotificationProvider with ChangeNotifier {
     }
   }
 
+  String get _userCacheKey =>
+      'gearsports_user_notifications_${_currentUserId ?? "guest"}';
+
   List<AppNotification> get notifications => List.unmodifiable(_notifications);
 
   int get unreadCount {
     return _notifications.where((n) => !n.isRead).length;
+  }
+
+  /// Đồng bộ thông báo cho người dùng hiện tại (Player/Shop/Admin)
+  Future<void> syncForUser(String? uid) async {
+    final isNewUser = _currentUserId != uid;
+    _currentUserId = uid;
+
+    if (isNewUser) {
+      _notifications.clear();
+      notifyListeners();
+    }
+
+    _isLoading = true;
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      // 1. Tải trước từ Local Cache (user cache + system cache)
+      final userCachedRaw = prefs.getString(_userCacheKey);
+      if (userCachedRaw != null && userCachedRaw.isNotEmpty) {
+        final decoded = jsonDecode(userCachedRaw) as List<dynamic>;
+        final loaded = decoded
+            .map((e) => AppNotification.fromMap(Map<String, dynamic>.from(e)))
+            .toList();
+        _mergeNotifications(loaded);
+      }
+
+      final sysCachedRaw = prefs.getString(_prefSystemNotifsKey);
+      if (sysCachedRaw != null && sysCachedRaw.isNotEmpty) {
+        final decodedSys = jsonDecode(sysCachedRaw) as List<dynamic>;
+        final loadedSys = decodedSys
+            .map((e) => AppNotification.fromMap(Map<String, dynamic>.from(e)))
+            .toList();
+        _mergeNotifications(loadedSys);
+      }
+      notifyListeners();
+
+      // 2. Đồng bộ Firestore nếu khả dụng
+      if (_isFirebaseReady) {
+        // Thông báo hệ thống
+        try {
+          final sysSnap = await FirebaseFirestore.instance
+              .collection('system_notifications')
+              .orderBy('timestamp', descending: true)
+              .limit(25)
+              .get()
+              .timeout(const Duration(seconds: 5));
+
+          final remoteSysNotifs = sysSnap.docs
+              .map((doc) => AppNotification.fromMap(doc.data(), docId: doc.id))
+              .toList();
+          _mergeNotifications(remoteSysNotifs);
+          final encodedSys = jsonEncode(remoteSysNotifs.map((n) => n.toMap()).toList());
+          await prefs.setString(_prefSystemNotifsKey, encodedSys);
+        } catch (e) {
+          debugPrint('syncForUser system_notifications warning: $e');
+        }
+
+        // Thông báo cá nhân người dùng (users/{uid}/notifications)
+        if (uid != null && uid.isNotEmpty && uid != 'guest_user') {
+          try {
+            final userSnap = await FirebaseFirestore.instance
+                .collection('users')
+                .doc(uid)
+                .collection('notifications')
+                .orderBy('timestamp', descending: true)
+                .limit(50)
+                .get()
+                .timeout(const Duration(seconds: 5));
+
+            final remoteUserNotifs = userSnap.docs
+                .map((doc) => AppNotification.fromMap(doc.data(), docId: doc.id))
+                .toList();
+            _mergeNotifications(remoteUserNotifs);
+          } catch (e) {
+            debugPrint('syncForUser user notifications warning: $e');
+          }
+        }
+
+        await _saveUserCache(prefs);
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('syncForUser error: $e');
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
   }
 
   /// Đồng bộ thông báo hệ thống từ Cloud Firestore (`system_notifications`)
@@ -47,14 +143,17 @@ class NotificationProvider with ChangeNotifier {
         final snap = await FirebaseFirestore.instance
             .collection('system_notifications')
             .orderBy('timestamp', descending: true)
+            .limit(25)
             .get()
-            .timeout(const Duration(seconds: 6));
+            .timeout(const Duration(seconds: 5));
 
         final remoteNotifs = snap.docs
             .map((doc) => AppNotification.fromMap(doc.data(), docId: doc.id))
             .toList();
         _mergeNotifications(remoteNotifs);
-        await _saveCache(prefs);
+        final encoded = jsonEncode(remoteNotifs.map((n) => n.toMap()).toList());
+        await prefs.setString(_prefSystemNotifsKey, encoded);
+        await _saveUserCache(prefs);
         notifyListeners();
       }
     } catch (e) {
@@ -81,33 +180,46 @@ class NotificationProvider with ChangeNotifier {
       ..addAll(list);
   }
 
-  Future<void> _saveCache(SharedPreferences prefs) async {
+  Future<void> _saveUserCache(SharedPreferences prefs) async {
     final encoded = jsonEncode(_notifications.map((n) => n.toMap()).toList());
-    await prefs.setString(_prefSystemNotifsKey, encoded);
+    await prefs.setString(_userCacheKey, encoded);
   }
 
-  void markAsRead(String id) {
-    final index = _notifications.indexWhere((n) => n.id == id);
-    if (index != -1 && !_notifications[index].isRead) {
-      _notifications[index].isRead = true;
-      notifyListeners();
+  Future<void> _saveCacheDirect() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await _saveUserCache(prefs);
+    } catch (e) {
+      debugPrint('_saveCacheDirect error: $e');
     }
   }
 
-  void markAllAsRead() {
-    for (var n in _notifications) {
-      n.isRead = true;
+  /// Danh sách các thông báo bảo trì / nâng cấp hệ thống từ Admin
+  List<AppNotification> get systemAlerts =>
+      _notifications.where((n) => n.isMaintenanceOrUpgrade).toList();
+
+  /// Danh sách thông báo dành riêng cho đối tác / Chủ shop
+  List<AppNotification> get shopNotifs =>
+      _notifications.where((n) => n.type == NotificationType.shopNotice).toList();
+
+  /// Thông báo bảo trì / nâng cấp mới nhất nếu có
+  AppNotification? get latestMaintenanceAlert {
+    try {
+      return _notifications.firstWhere((n) => n.isMaintenanceOrUpgrade);
+    } catch (_) {
+      return null;
     }
-    notifyListeners();
   }
 
-  void addNotification({
+  /// Thêm thông báo mới cho người dùng (làm tăng số chấm đỏ ngay lập tức)
+  Future<void> addNotification({
     required String title,
     required String message,
     required NotificationType type,
     String? targetRacketId,
     String? targetOrderId,
-  }) {
+    String? targetUserId,
+  }) async {
     final notif = AppNotification(
       id: 'notif_${DateTime.now().millisecondsSinceEpoch}',
       title: title,
@@ -116,13 +228,104 @@ class NotificationProvider with ChangeNotifier {
       timestamp: DateTime.now(),
       targetRacketId: targetRacketId,
       targetOrderId: targetOrderId,
+      targetUserId: targetUserId ?? _currentUserId,
+      isRead: false,
     );
-    _notifications.insert(0, notif);
+    
+    // Nếu thông báo gửi cho chính user hiện tại thì nạp vào RAM
+    if (targetUserId == null || targetUserId == _currentUserId) {
+      _notifications.insert(0, notif);
+      notifyListeners();
+      await _saveCacheDirect();
+    }
+
+    // Đồng bộ Firestore người dùng
+    final recipient = targetUserId ?? _currentUserId;
+    if (_isFirebaseReady &&
+        recipient != null &&
+        recipient.isNotEmpty &&
+        recipient != 'guest_user') {
+      try {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(recipient)
+            .collection('notifications')
+            .doc(notif.id)
+            .set(notif.toMap())
+            .timeout(const Duration(seconds: 5));
+      } catch (e) {
+        debugPrint('addNotification Firestore error: $e');
+      }
+    }
+  }
+
+  /// Đánh dấu một thông báo là đã đọc (giảm số chấm đỏ)
+  Future<void> markAsRead(String id) async {
+    final index = _notifications.indexWhere((n) => n.id == id);
+    if (index != -1 && !_notifications[index].isRead) {
+      _notifications[index].isRead = true;
+      notifyListeners();
+
+      await _saveCacheDirect();
+
+      if (_isFirebaseReady &&
+          _currentUserId != null &&
+          _currentUserId!.isNotEmpty &&
+          _currentUserId != 'guest_user') {
+        try {
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(_currentUserId)
+              .collection('notifications')
+              .doc(id)
+              .update({'isRead': true})
+              .timeout(const Duration(seconds: 4));
+        } catch (e) {
+          debugPrint('markAsRead Firestore error: $e');
+        }
+      }
+    }
+  }
+
+  /// Đánh dấu tất cả thông báo là đã đọc (xóa hết chấm đỏ)
+  Future<void> markAllAsRead() async {
+    bool hasUnread = false;
+    for (var n in _notifications) {
+      if (!n.isRead) {
+        n.isRead = true;
+        hasUnread = true;
+      }
+    }
+    if (!hasUnread) return;
     notifyListeners();
+
+    await _saveCacheDirect();
+
+    if (_isFirebaseReady &&
+        _currentUserId != null &&
+        _currentUserId!.isNotEmpty &&
+        _currentUserId != 'guest_user') {
+      try {
+        final colRef = FirebaseFirestore.instance
+            .collection('users')
+            .doc(_currentUserId)
+            .collection('notifications');
+        final snap = await colRef.where('isRead', isEqualTo: false).limit(50).get();
+        if (snap.docs.isNotEmpty) {
+          final batch = FirebaseFirestore.instance.batch();
+          for (final doc in snap.docs) {
+            batch.update(doc.reference, {'isRead': true});
+          }
+          await batch.commit().timeout(const Duration(seconds: 5));
+        }
+      } catch (e) {
+        debugPrint('markAllAsRead Firestore error: $e');
+      }
+    }
   }
 
   /// Tự động kiểm tra và sinh cảnh báo cho những cây vợt cần thay cước
-  void syncRacketTensionAlerts(List<Racket> rackets) {
+  Future<void> syncRacketTensionAlerts(List<Racket> rackets) async {
     bool hasChange = false;
     for (final racket in rackets) {
       if (racket.needsRestring) {
@@ -141,11 +344,28 @@ class NotificationProvider with ChangeNotifier {
           );
           _notifications.insert(0, notif);
           hasChange = true;
+
+          // Lưu lên Firestore người dùng nếu có thể
+          if (_isFirebaseReady &&
+              _currentUserId != null &&
+              _currentUserId!.isNotEmpty &&
+              _currentUserId != 'guest_user') {
+            try {
+              FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(_currentUserId)
+                  .collection('notifications')
+                  .doc(notif.id)
+                  .set(notif.toMap())
+                  .timeout(const Duration(seconds: 5));
+            } catch (_) {}
+          }
         }
       }
     }
     if (hasChange) {
       notifyListeners();
+      await _saveCacheDirect();
     }
   }
 
@@ -153,7 +373,7 @@ class NotificationProvider with ChangeNotifier {
   Future<void> broadcastSystemNotification({
     required String title,
     required String message,
-    NotificationType type = NotificationType.promo,
+    NotificationType type = NotificationType.systemAlert,
   }) async {
     final notif = AppNotification(
       id: 'sys_notif_${DateTime.now().millisecondsSinceEpoch}',
@@ -168,7 +388,19 @@ class NotificationProvider with ChangeNotifier {
 
     try {
       final prefs = await SharedPreferences.getInstance();
-      await _saveCache(prefs);
+      await _saveUserCache(prefs);
+
+      // Lưu vào kho thông báo hệ thống để mọi đối tượng người dùng (Chủ Shop & Người chơi) đều tải được
+      final rawSys = prefs.getString(_prefSystemNotifsKey);
+      List<dynamic> sysList = [];
+      if (rawSys != null && rawSys.isNotEmpty) {
+        try {
+          sysList = jsonDecode(rawSys) as List<dynamic>;
+        } catch (_) {}
+      }
+      sysList.insert(0, notif.toMap());
+      await prefs.setString(_prefSystemNotifsKey, jsonEncode(sysList));
+
       if (_isFirebaseReady) {
         await FirebaseFirestore.instance
             .collection('system_notifications')
@@ -188,7 +420,18 @@ class NotificationProvider with ChangeNotifier {
 
     try {
       final prefs = await SharedPreferences.getInstance();
-      await _saveCache(prefs);
+      await _saveUserCache(prefs);
+
+      final rawSys = prefs.getString(_prefSystemNotifsKey);
+      if (rawSys != null && rawSys.isNotEmpty) {
+        try {
+          final list = (jsonDecode(rawSys) as List<dynamic>)
+              .where((item) => item['id'] != id)
+              .toList();
+          await prefs.setString(_prefSystemNotifsKey, jsonEncode(list));
+        } catch (_) {}
+      }
+
       if (_isFirebaseReady) {
         await FirebaseFirestore.instance
             .collection('system_notifications')
@@ -201,8 +444,58 @@ class NotificationProvider with ChangeNotifier {
     }
   }
 
-  void removeNotification(String id) {
+  /// Xóa một thông báo cụ thể
+  Future<void> removeNotification(String id) async {
     _notifications.removeWhere((n) => n.id == id);
     notifyListeners();
+
+    await _saveCacheDirect();
+
+    if (_isFirebaseReady &&
+        _currentUserId != null &&
+        _currentUserId!.isNotEmpty &&
+        _currentUserId != 'guest_user') {
+      try {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(_currentUserId)
+            .collection('notifications')
+            .doc(id)
+            .delete()
+            .timeout(const Duration(seconds: 4));
+      } catch (e) {
+        debugPrint('removeNotification error: $e');
+      }
+    }
+  }
+
+  /// Xóa tất cả thông báo của người chơi
+  Future<void> clearAllNotifications() async {
+    _notifications.clear();
+    notifyListeners();
+
+    await _saveCacheDirect();
+
+    if (_isFirebaseReady &&
+        _currentUserId != null &&
+        _currentUserId!.isNotEmpty &&
+        _currentUserId != 'guest_user') {
+      try {
+        final colRef = FirebaseFirestore.instance
+            .collection('users')
+            .doc(_currentUserId)
+            .collection('notifications');
+        final snap = await colRef.limit(100).get();
+        if (snap.docs.isNotEmpty) {
+          final batch = FirebaseFirestore.instance.batch();
+          for (final doc in snap.docs) {
+            batch.delete(doc.reference);
+          }
+          await batch.commit().timeout(const Duration(seconds: 5));
+        }
+      } catch (e) {
+        debugPrint('clearAllNotifications error: $e');
+      }
+    }
   }
 }

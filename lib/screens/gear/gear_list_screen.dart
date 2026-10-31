@@ -3,11 +3,13 @@ import 'package:provider/provider.dart';
 import '../../models/racket_model.dart';
 import '../../providers/racket_provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/notification_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/racket_card.dart';
 import '../auth/login_register_screen.dart';
 import 'gear_detail_screen.dart';
 import 'add_edit_racket_screen.dart';
+import '../notifications/notifications_screen.dart';
 import '../../models/user_model.dart';
 import '../subscription/upgrade_vip_dialog.dart';
 
@@ -149,6 +151,7 @@ class GearListScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final racketProvider = context.watch<RacketProvider>();
+    final notifProvider = context.watch<NotificationProvider>();
     final rackets = racketProvider.rackets;
     final needingRestringCount = racketProvider.racketsNeedingRestring.length;
 
@@ -167,6 +170,46 @@ class GearListScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Gara Vợt Của Tôi'),
         actions: [
+          // Nút thông báo kèm chấm đỏ (Badge)
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.notifications_none_rounded),
+                tooltip: 'Thông báo & Cảnh báo',
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const NotificationsScreen(),
+                    ),
+                  );
+                },
+              ),
+              if (notifProvider.unreadCount > 0)
+                Positioned(
+                  right: 6,
+                  top: 6,
+                  child: Container(
+                    padding: const EdgeInsets.all(3),
+                    constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                    decoration: const BoxDecoration(
+                      color: AppTheme.danger,
+                      shape: BoxShape.circle,
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      '${notifProvider.unreadCount > 99 ? '99+' : notifProvider.unreadCount}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
           IconButton(
             icon: const Icon(Icons.add_circle_outline_rounded, color: AppTheme.primary),
             tooltip: 'Thêm vợt mới',

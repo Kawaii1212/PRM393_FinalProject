@@ -781,23 +781,43 @@ class _ChatListScreenState extends State<ChatListScreen> {
                             ),
                           ],
                         ),
-                        trailing: PopupMenuButton<String>(
-                          icon: const Icon(Icons.more_vert_rounded, size: 20, color: AppTheme.textMuted),
-                          color: AppTheme.surfaceLight,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          onSelected: (val) {
-                            if (val == 'report') {
-                              ShopReportSheet.show(
-                                context,
-                                shopId: thread.shopId,
-                                shopName: thread.shopName,
-                                threadId: thread.id,
-                              );
-                            } else if (val == 'delete') {
-                              chatProvider.deleteThread(thread.id);
-                            }
-                          },
-                          itemBuilder: (ctx) {
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (thread.unreadCount > 0)
+                              Container(
+                                margin: const EdgeInsets.only(right: 6),
+                                padding: const EdgeInsets.symmetric(horizontal: 6.5, vertical: 2.5),
+                                decoration: const BoxDecoration(
+                                  color: AppTheme.danger,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Text(
+                                  '${thread.unreadCount > 99 ? '99+' : thread.unreadCount}',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            PopupMenuButton<String>(
+                              icon: const Icon(Icons.more_vert_rounded, size: 20, color: AppTheme.textMuted),
+                              color: AppTheme.surfaceLight,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              onSelected: (val) {
+                                if (val == 'report') {
+                                  ShopReportSheet.show(
+                                    context,
+                                    shopId: thread.shopId,
+                                    shopName: thread.shopName,
+                                    threadId: thread.id,
+                                  );
+                                } else if (val == 'delete') {
+                                  chatProvider.deleteThread(thread.id);
+                                }
+                              },
+                              itemBuilder: (ctx) {
                             final authUser = context.read<AuthProvider>().currentUser;
                             final bool isPlayer = authUser?.role == UserRole.player;
                             return [
@@ -832,6 +852,8 @@ class _ChatListScreenState extends State<ChatListScreen> {
                             ];
                           },
                         ),
+                      ],
+                    ),
                       ),
                     );
                   },
@@ -879,6 +901,16 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
           'Em muốn căng 4 nút kẹp đôi chuẩn Yonex ạ.',
           'Shop cam kết cước chính hãng 100% không ạ?',
         ];
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        context.read<ChatProvider>().markThreadAsRead(widget.threadId);
+      }
+    });
+  }
 
   @override
   void dispose() {
@@ -1038,6 +1070,15 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
     final shopProvider = context.watch<ShopProvider>();
     final authUser = context.watch<AuthProvider>().currentUser;
     final thread = chatProvider.getThread(widget.threadId);
+
+    // Nếu đang mở cuộc hội thoại này mà có tin nhắn chưa đọc, tự động đánh dấu đã đọc
+    if (thread != null && thread.unreadCount > 0) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          context.read<ChatProvider>().markThreadAsRead(widget.threadId);
+        }
+      });
+    }
 
     if (thread == null) {
       return Scaffold(
