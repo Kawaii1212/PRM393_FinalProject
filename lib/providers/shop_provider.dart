@@ -339,6 +339,20 @@ class ShopProvider with ChangeNotifier {
     }
   }
 
+  /// Cập nhật thời hạn gói dịch vụ duy trì của Shop
+  Future<void> updateShopSubscription({
+    required String shopId,
+    required DateTime subscriptionExpiresAt,
+  }) async {
+    final shop = getShopById(shopId);
+    if (shop != null) {
+      final updated = shop.copyWith(
+        subscriptionExpiresAt: subscriptionExpiresAt,
+      );
+      await upsertShop(updated);
+    }
+  }
+
   /// Admin phê duyệt (`approved`) hoặc vô hiệu hóa (`disabled`) Cửa hàng theo shopId
   Future<void> approveShop(String shopId, bool isDisabling) async {
     final shop = getShopById(shopId);

@@ -7,6 +7,7 @@ import '../../theme/app_theme.dart';
 import '../auth/login_register_screen.dart';
 import '../shop_owner/shop_owner_dashboard_screen.dart';
 import '../injury/injury_history_screen.dart';
+import '../subscription/upgrade_vip_dialog.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -377,7 +378,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 initialValue: user.role.displayName,
                 enabled: false,
                 decoration: const InputDecoration(
-                  labelText: 'Vai trò tài khoản (Cố định)',
+                  labelText: 'Vai trò tài khoản',
                   helperText: 'Vai trò gắn liền với giao diện hệ thống và không thể thay đổi',
                   helperStyle: TextStyle(color: AppTheme.textMuted, fontSize: 11),
                   prefixIcon: Icon(
@@ -398,7 +399,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 initialValue: user.email,
                 enabled: false,
                 decoration: const InputDecoration(
-                  labelText: 'Email đăng nhập (Cố định)',
+                  labelText: 'Email đăng nhập',
                   prefixIcon: Icon(
                     Icons.email_outlined,
                     color: AppTheme.textMuted,
@@ -498,6 +499,97 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 const SizedBox(height: 14),
               ],
 
+              // Banner Gói Dịch Vụ VIP (Dành cho Player)
+              if (user.role == UserRole.player) ...[
+                Container(
+                  margin: const EdgeInsets.only(bottom: 14),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    gradient: user.isVipActive
+                        ? LinearGradient(
+                            colors: [
+                              const Color(0xFFFFD700).withOpacity(0.15),
+                              const Color(0xFFFFA500).withOpacity(0.1),
+                            ],
+                          )
+                        : LinearGradient(
+                            colors: [
+                              AppTheme.primary.withOpacity(0.12),
+                              AppTheme.surface,
+                            ],
+                          ),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: user.isVipActive
+                          ? const Color(0xFFFFD700).withOpacity(0.5)
+                          : AppTheme.primary.withOpacity(0.4),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: user.isVipActive
+                              ? const Color(0xFFFFD700).withOpacity(0.2)
+                              : AppTheme.primary.withOpacity(0.2),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          user.isVipActive
+                              ? Icons.workspace_premium_rounded
+                              : Icons.star_border_rounded,
+                          color: user.isVipActive
+                              ? const Color(0xFFFFD700)
+                              : AppTheme.primary,
+                          size: 24,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              user.isVipActive
+                                  ? 'Hội Viên VIP Gear Sports 👑'
+                                  : 'Nâng Cấp Hội Viên VIP 👑',
+                              style: const TextStyle(
+                                color: AppTheme.textPrimary,
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              user.isVipActive
+                                  ? 'Thời hạn còn lại: ${user.vipDaysRemaining} ngày. Bấm để gia hạn cộng dồn!'
+                                  : 'Chỉ từ 29k/tháng: Thêm vợt không giới hạn, mở khóa Bác Sĩ Thể Thao.',
+                              style: const TextStyle(
+                                color: AppTheme.textSecondary,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      ElevatedButton(
+                        onPressed: () => UpgradeVipDialog.show(context),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: user.isVipActive
+                              ? const Color(0xFFFFD700)
+                              : AppTheme.primary,
+                          foregroundColor: Colors.black,
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                        ),
+                        child: Text(user.isVipActive ? 'Gia hạn' : 'Nâng cấp'),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+
               // Sổ tay chấn thương & Phục hồi chức năng (Dành cho Player đã đăng nhập)
               if (user.role == UserRole.player) ...[
                 OutlinedButton.icon(
@@ -550,6 +642,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ),
                           ],
                         ),
+                      );
+                      return;
+                    }
+
+                    if (!user.canAccessHealthFeatures) {
+                      UpgradeVipDialog.show(
+                        context,
+                        featurePrompt:
+                            'Chức năng Sổ tay chấn thương & Phục hồi chỉ dành riêng cho Hội Viên VIP.\nNâng cấp ngay từ 29k/tháng để truy cập phác đồ phục hồi chuyên sâu!',
                       );
                       return;
                     }

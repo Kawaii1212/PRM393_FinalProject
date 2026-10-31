@@ -18,6 +18,9 @@ class Shop {
   final String? ownerName;
   final String? ownerEmail;
   final String status; // 'pending' | 'approved' | 'disabled'
+  final DateTime? createdAt;
+  final DateTime? trialExpiresAt;
+  final DateTime? subscriptionExpiresAt;
 
   Shop({
     required this.id,
@@ -39,6 +42,9 @@ class Shop {
     this.ownerName,
     this.ownerEmail,
     this.status = 'approved',
+    this.createdAt,
+    this.trialExpiresAt,
+    this.subscriptionExpiresAt,
   });
 
   bool get isPending => status == 'pending';
@@ -47,6 +53,56 @@ class Shop {
 
   /// Shop đã đăng ký tài khoản trên app bởi Chủ Shop (có tài khoản xác thực)
   bool get isRegisteredOnApp => ownerUid != null && ownerUid!.isNotEmpty;
+
+  /// Hạn dùng thử miễn phí 1 tháng (30 ngày kể từ lúc tạo shop)
+  DateTime get effectiveTrialExpiry {
+    if (trialExpiresAt != null) return trialExpiresAt!;
+    return (createdAt ?? DateTime.now()).add(const Duration(days: 30));
+  }
+
+  /// Gói dùng thử 1 tháng có còn hiệu lực không
+  bool get isTrialActive {
+    return DateTime.now().isBefore(effectiveTrialExpiry);
+  }
+
+  /// Gói trả phí duy trì có còn hiệu lực không
+  bool get isPaidActive {
+    return subscriptionExpiresAt != null &&
+        DateTime.now().isBefore(subscriptionExpiresAt!);
+  }
+
+  /// Tình trạng hiệu lực hoạt động dịch vụ của Shop:
+  /// - Nếu là điểm Google Maps công cộng: luôn active
+  /// - Nếu là Shop đăng ký tài khoản: Phải còn hạn dùng thử HOẶC còn hạn trả phí
+  bool get isSubscriptionActive {
+    if (!isRegisteredOnApp) return true;
+    return isTrialActive || isPaidActive;
+  }
+
+  /// Số ngày hiệu lực còn lại (tính theo gói trả phí hoặc gói dùng thử)
+  int get daysRemaining {
+    if (isPaidActive) {
+      final diff = subscriptionExpiresAt!.difference(DateTime.now()).inDays + 1;
+      return diff > 0 ? diff : 0;
+    }
+    if (isTrialActive) {
+      final diff = effectiveTrialExpiry.difference(DateTime.now()).inDays + 1;
+      return diff > 0 ? diff : 0;
+    }
+    return 0;
+  }
+
+  /// Nhãn hiển thị trạng thái gói dịch vụ
+  String get subscriptionStatusLabel {
+    if (!isRegisteredOnApp) return 'Điểm công cộng';
+    if (isPaidActive) {
+      return 'Gói dịch vụ (Còn $daysRemaining ngày)';
+    }
+    if (isTrialActive) {
+      return 'Dùng thử miễn phí (Còn $daysRemaining ngày)';
+    }
+    return 'Hết hạn dịch vụ (Cần đóng phí)';
+  }
 
   /// Shop đối tác chính thức đã đăng ký trên app và được Admin phê duyệt hoạt động
   bool get isVerifiedPartner => isRegisteredOnApp && isApproved;
@@ -86,6 +142,9 @@ class Shop {
     String? ownerName,
     String? ownerEmail,
     String? status,
+    DateTime? createdAt,
+    DateTime? trialExpiresAt,
+    DateTime? subscriptionExpiresAt,
   }) {
     return Shop(
       id: id ?? this.id,
@@ -107,6 +166,10 @@ class Shop {
       ownerName: ownerName ?? this.ownerName,
       ownerEmail: ownerEmail ?? this.ownerEmail,
       status: status ?? this.status,
+      createdAt: createdAt ?? this.createdAt,
+      trialExpiresAt: trialExpiresAt ?? this.trialExpiresAt,
+      subscriptionExpiresAt:
+          subscriptionExpiresAt ?? this.subscriptionExpiresAt,
     );
   }
 
@@ -131,6 +194,9 @@ class Shop {
       'ownerName': ownerName,
       'ownerEmail': ownerEmail,
       'status': status,
+      'createdAt': createdAt?.toIso8601String(),
+      'trialExpiresAt': trialExpiresAt?.toIso8601String(),
+      'subscriptionExpiresAt': subscriptionExpiresAt?.toIso8601String(),
     };
   }
 
@@ -157,6 +223,15 @@ class Shop {
       ownerName: map['ownerName']?.toString(),
       ownerEmail: map['ownerEmail']?.toString(),
       status: map['status']?.toString() ?? 'approved',
+      createdAt: map['createdAt'] != null
+          ? DateTime.tryParse(map['createdAt'].toString())
+          : null,
+      trialExpiresAt: map['trialExpiresAt'] != null
+          ? DateTime.tryParse(map['trialExpiresAt'].toString())
+          : null,
+      subscriptionExpiresAt: map['subscriptionExpiresAt'] != null
+          ? DateTime.tryParse(map['subscriptionExpiresAt'].toString())
+          : null,
     );
   }
 }

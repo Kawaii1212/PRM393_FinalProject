@@ -414,6 +414,56 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
+  /// Cập nhật trạng thái VIP của người dùng (Sau khi thanh toán gói VIP hoặc được Admin kích hoạt)
+  Future<bool> updateVipStatus({
+    required bool isVip,
+    required DateTime? vipExpiresAt,
+    String? targetUid,
+  }) async {
+    final uidToUpdate = targetUid ?? _currentUser?.uid;
+    if (uidToUpdate == null) return false;
+
+    try {
+      if (_currentUser != null && _currentUser!.uid == uidToUpdate) {
+        final updatedUser = _currentUser!.copyWith(
+          isVip: isVip,
+          vipExpiresAt: vipExpiresAt,
+        );
+        _currentUser = updatedUser;
+        final prefs = await SharedPreferences.getInstance();
+        await _saveSessionLocally(updatedUser, prefs);
+
+        final localUsersMap = _getLocalUsersMap(prefs);
+        final emailKey = updatedUser.email.toLowerCase();
+        if (localUsersMap.containsKey(emailKey)) {
+          final existing = localUsersMap[emailKey] as Map<String, dynamic>;
+          localUsersMap[emailKey] = {
+            'password': existing['password'] ?? '123456',
+            'user': updatedUser.toMap(),
+          };
+          await prefs.setString(_prefLocalUsersKey, jsonEncode(localUsersMap));
+        }
+      }
+
+      if (_isFirebaseAvailable) {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(uidToUpdate)
+            .set({
+              'isVip': isVip,
+              'vipExpiresAt': vipExpiresAt?.toIso8601String(),
+            }, SetOptions(merge: true))
+            .timeout(const Duration(seconds: 4));
+      }
+
+      notifyListeners();
+      return true;
+    } catch (e) {
+      debugPrint('updateVipStatus error: $e');
+      return false;
+    }
+  }
+
   /// Gửi email khôi phục mật khẩu qua Firebase Auth
   Future<bool> resetPassword(String email) async {
     final trimmed = email.trim();

@@ -8,6 +8,8 @@ import '../../widgets/racket_card.dart';
 import '../auth/login_register_screen.dart';
 import 'gear_detail_screen.dart';
 import 'add_edit_racket_screen.dart';
+import '../../models/user_model.dart';
+import '../subscription/upgrade_vip_dialog.dart';
 
 class GearListScreen extends StatelessWidget {
   const GearListScreen({super.key});
@@ -74,6 +76,8 @@ class GearListScreen extends StatelessWidget {
   void _navigateToAddRacket(BuildContext context) {
     final authProv = context.read<AuthProvider>();
     final racketProv = context.read<RacketProvider>();
+    final currentUser = authProv.currentUser;
+
     if (authProv.isGuest && racketProv.allRackets.length >= 3) {
       showDialog(
         context: context,
@@ -121,6 +125,17 @@ class GearListScreen extends StatelessWidget {
             ),
           ],
         ),
+      );
+      return;
+    }
+
+    if (currentUser != null &&
+        currentUser.role == UserRole.player &&
+        !currentUser.canAddRacket(racketProv.allRackets.length)) {
+      UpgradeVipDialog.show(
+        context,
+        featurePrompt:
+            'Tài khoản Miễn phí chỉ được thêm tối đa 5 cây vợt vào Gara (Hiện có: ${racketProv.allRackets.length}/5 cây).\nHãy nâng cấp gói VIP để mở rộng Gara không giới hạn số lượng vợt!',
       );
       return;
     }

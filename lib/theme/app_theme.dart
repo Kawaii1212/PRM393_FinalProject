@@ -4,8 +4,11 @@ class AppTheme {
   // Brand Athletic Palette
   static const Color primary = Color(0xFF00E676); // Electric Lime
   static const Color primaryDark = Color(0xFF00B0FF); // Cyber Cyan
-  static const Color accent = Color(0xFFFF9100); // Energetic Amber
+  static const Color accent = Color(0xFFFF9100);
+  static const Color warning = Color(0xFFFFB300); // Energetic Amber
   static const Color danger = Color(0xFFFF5252); // Alert Red
+  static const Color error = Color(0xFFFF5252); // Error alias
+  static const Color cardBackground = Color(0xFF131D31); // Card Surface alias
   static const Color success = Color(0xFF00E676); // Success Green
 
   // Dark Athletic Surfaces

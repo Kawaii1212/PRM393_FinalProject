@@ -12,6 +12,7 @@ import '../../providers/chat_provider.dart';
 import '../../theme/app_theme.dart';
 import '../chat/chat_screen.dart';
 import '../auth/login_register_screen.dart';
+import '../subscription/shop_subscription_dialog.dart';
 
 class ShopOwnerDashboardScreen extends StatefulWidget {
   const ShopOwnerDashboardScreen({super.key});
@@ -195,6 +196,10 @@ class _ShopOwnerDashboardScreenState extends State<ShopOwnerDashboardScreen> {
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          // Thẻ Trạng Thái Gói Dịch Vụ / Dùng Thử Miễn Phí
+          _buildShopSubscriptionCard(context, shop),
+          const SizedBox(height: 14),
+
           // Banner trạng thái kiểm duyệt bởi Admin
           _buildShopStatusBanner(shop),
           const SizedBox(height: 16),
@@ -325,6 +330,100 @@ class _ShopOwnerDashboardScreenState extends State<ShopOwnerDashboardScreen> {
                       padding: const EdgeInsets.symmetric(vertical: 12),
                     ),
                   ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildShopSubscriptionCard(BuildContext context, Shop shop) {
+    final isPaid = shop.isPaidActive;
+    final isExpired = !shop.isSubscriptionActive;
+
+    Color cardBorder;
+    Color iconColor;
+    IconData iconData;
+    String title;
+    String desc;
+    String btnText;
+
+    if (isExpired) {
+      cardBorder = AppTheme.danger;
+      iconColor = AppTheme.danger;
+      iconData = Icons.warning_rounded;
+      title = 'Gói Dịch Vụ Đã Hết Hạn ⚠️';
+      desc = 'Thời gian dùng thử 1 tháng đã kết thúc. Vui lòng đóng phí duy trì (20k/tháng hoặc 40k/3 tháng) để tiếp tục đón khách!';
+      btnText = 'Gia hạn ngay';
+    } else if (isPaid) {
+      cardBorder = const Color(0xFF38EF7D);
+      iconColor = const Color(0xFF38EF7D);
+      iconData = Icons.verified_rounded;
+      title = 'Gói Dịch Vụ Hoạt Động (${shop.daysRemaining} ngày) ✨';
+      desc = 'Cửa hàng của bạn đang được duy trì hiển thị đầy đủ trên Bản đồ cầu lông và Danh bạ đối tác.';
+      btnText = 'Gia hạn thêm';
+    } else {
+      cardBorder = AppTheme.primary;
+      iconColor = AppTheme.primary;
+      iconData = Icons.card_giftcard_rounded;
+      title = 'Dùng Thử Miễn Phí (Còn ${shop.daysRemaining} ngày) 🎁';
+      desc = 'Bạn được miễn phí 1 tháng đầu tiên kể từ khi mở shop. Sau 1 tháng, phí duy trì chỉ từ 20k/tháng.';
+      btnText = 'Gia hạn trước';
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: iconColor.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: cardBorder.withOpacity(0.4)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: iconColor.withOpacity(0.18),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(iconData, color: iconColor, size: 22),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    color: isExpired ? AppTheme.danger : AppTheme.textPrimary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  desc,
+                  style: const TextStyle(
+                    color: AppTheme.textSecondary,
+                    fontSize: 11.5,
+                    height: 1.35,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                ElevatedButton.icon(
+                  onPressed: () => ShopSubscriptionDialog.show(context, shop: shop),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: isExpired ? AppTheme.danger : AppTheme.primary,
+                    foregroundColor: Colors.black,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                  ),
+                  icon: const Icon(Icons.qr_code_rounded, size: 16),
+                  label: Text(btnText),
                 ),
               ],
             ),
@@ -481,7 +580,13 @@ class _ShopOwnerDashboardScreenState extends State<ShopOwnerDashboardScreen> {
 
     return Scaffold(
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showAddEditItemModal(context, shop),
+        onPressed: () {
+          if (!shop.isSubscriptionActive) {
+            ShopSubscriptionDialog.show(context, shop: shop);
+            return;
+          }
+          _showAddEditItemModal(context, shop);
+        },
         backgroundColor: AppTheme.primary,
         foregroundColor: Colors.black,
         icon: const Icon(Icons.add_photo_alternate_rounded),
@@ -489,6 +594,33 @@ class _ShopOwnerDashboardScreenState extends State<ShopOwnerDashboardScreen> {
       ),
       body: Column(
         children: [
+          if (!shop.isSubscriptionActive)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              color: AppTheme.danger.withOpacity(0.18),
+              child: Row(
+                children: [
+                  const Icon(Icons.warning_amber_rounded, color: AppTheme.danger, size: 20),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text(
+                      'Gói dịch vụ đã hết hạn. Hãy gia hạn (20k/tháng) để tiếp tục đăng thêm sản phẩm!',
+                      style: TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () => ShopSubscriptionDialog.show(context, shop: shop),
+                    style: TextButton.styleFrom(
+                      foregroundColor: AppTheme.primary,
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      minimumSize: Size.zero,
+                    ),
+                    child: const Text('Gia hạn ➔', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                  ),
+                ],
+              ),
+            ),
+
           // Search & Filter controls
           Container(
             padding: const EdgeInsets.all(12),
@@ -871,6 +1003,12 @@ class _ShopOwnerDashboardScreenState extends State<ShopOwnerDashboardScreen> {
         const SizedBox(height: 20),
 
         // Cài đặt & Thông tin
+        _settingTile(
+          icon: Icons.workspace_premium_rounded,
+          title: 'Gói Dịch Vụ Cửa Hàng',
+          subtitle: shop != null ? shop.subscriptionStatusLabel : 'Chưa đăng ký',
+          onTap: () => shop != null ? ShopSubscriptionDialog.show(context, shop: shop) : null,
+        ),
         _settingTile(
           icon: Icons.storefront_rounded,
           title: 'Hồ sơ Cửa Hàng',

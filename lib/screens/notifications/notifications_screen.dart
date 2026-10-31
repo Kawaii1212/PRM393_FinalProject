@@ -15,7 +15,6 @@ class NotificationsScreen extends StatefulWidget {
 }
 
 class _NotificationsScreenState extends State<NotificationsScreen> {
-  int _selectedFilter = 0; // 0: All, 1: Tension alerts
   final _dateFormat = DateFormat('dd/MM HH:mm');
 
   @override
@@ -34,10 +33,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         .where((n) => n.type != NotificationType.orderStatus)
         .toList();
 
-    final filteredNotifs = allNotifs.where((n) {
-      if (_selectedFilter == 1) return n.type == NotificationType.tensionAlert;
-      return true;
-    }).toList();
+
 
     return Scaffold(
       appBar: AppBar(
@@ -54,63 +50,25 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             ),
         ],
       ),
-      body: Column(
-        children: [
-          // Filter Tabs (Bỏ mục đơn đặt lịch theo yêu cầu)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Row(
-              children: [
-                _filterChip(0, 'Tất cả (${allNotifs.length})'),
-                const SizedBox(width: 8),
-                _filterChip(
-                  1,
-                  'Cảnh Báo Vợt (${allNotifs.where((n) => n.type == NotificationType.tensionAlert).length})',
-                ),
-              ],
+      body: allNotifs.isEmpty
+          ? const Center(
+              child: Text(
+                'Bạn chưa có thông báo nào.',
+                style: TextStyle(color: AppTheme.textMuted),
+              ),
+            )
+          : ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: allNotifs.length,
+              itemBuilder: (context, idx) {
+                final item = allNotifs[idx];
+                return _buildNotificationCard(context, item, notifProvider);
+              },
             ),
-          ),
-
-          // Notification List
-          Expanded(
-            child: filteredNotifs.isEmpty
-                ? const Center(
-                    child: Text(
-                      'Không có thông báo nào trong mục này',
-                      style: TextStyle(color: AppTheme.textMuted),
-                    ),
-                  )
-                : ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: filteredNotifs.length,
-                    itemBuilder: (context, idx) {
-                      final item = filteredNotifs[idx];
-                      return _buildNotificationCard(context, item, notifProvider);
-                    },
-                  ),
-          ),
-        ],
-      ),
     );
   }
 
-  Widget _filterChip(int index, String label) {
-    final isSelected = _selectedFilter == index;
-    return ChoiceChip(
-      label: Text(label),
-      selected: isSelected,
-      onSelected: (_) => setState(() => _selectedFilter = index),
-      selectedColor: AppTheme.primary,
-      backgroundColor: AppTheme.surface,
-      labelStyle: TextStyle(
-        color: isSelected ? Colors.black : AppTheme.textSecondary,
-        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-        fontSize: 12,
-      ),
-      side: BorderSide(color: isSelected ? AppTheme.primary : AppTheme.border),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-    );
-  }
+
 
   Widget _buildNotificationCard(BuildContext context, AppNotification item, NotificationProvider provider) {
     Color typeColor;
