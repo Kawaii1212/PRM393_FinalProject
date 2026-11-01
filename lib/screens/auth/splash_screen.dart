@@ -60,20 +60,31 @@ class _SplashScreenState extends State<SplashScreen> {
                 width: 96,
                 height: 96,
                 decoration: BoxDecoration(
-                  gradient: AppTheme.primaryGradient,
-                  borderRadius: BorderRadius.circular(28),
+                  borderRadius: BorderRadius.circular(24),
                   boxShadow: [
                     BoxShadow(
-                      color: AppTheme.primary.withOpacity(0.45),
+                      color: AppTheme.primary.withOpacity(0.35),
                       blurRadius: 24,
-                      offset: const Offset(0, 10),
+                      offset: const Offset(0, 8),
                     ),
                   ],
                 ),
-                child: const Icon(
-                  Icons.sports_tennis_rounded,
-                  size: 54,
-                  color: Colors.black,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(24),
+                  child: Image.asset(
+                    'assets/images/app_icon.png',
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) => Container(
+                      decoration: const BoxDecoration(
+                        gradient: AppTheme.primaryGradient,
+                      ),
+                      child: const Icon(
+                        Icons.sports_tennis_rounded,
+                        size: 54,
+                        color: Colors.black,
+                      ),
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(height: 24),
