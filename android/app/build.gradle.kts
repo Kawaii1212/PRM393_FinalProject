@@ -1,11 +1,17 @@
 plugins {
     id("com.android.application")
-    // START: FlutterFire Configuration
-    id("com.google.gms.google-services")
-    // END: FlutterFire Configuration
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
+
+// START: FlutterFire Configuration
+// Chỉ áp dụng plugin google-services nếu tệp google-services.json tồn tại trên máy cục bộ.
+// Nếu clone từ GitHub (nơi google-services.json đã được đưa vào .gitignore để bảo mật API Key),
+// ứng dụng vẫn build và khởi tạo Firebase bình thường thông qua DefaultFirebaseOptions trong lib/firebase_options.dart.
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
+}
+// END: FlutterFire Configuration
 
 android {
     namespace = "com.example.finalproject"
